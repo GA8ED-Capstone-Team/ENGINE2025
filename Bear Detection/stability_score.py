@@ -27,7 +27,7 @@ video_path = "/home/realtimeidns/Downloads/WATCH Security camera captures black 
 cap = cv2.VideoCapture(video_path)
 
 if not cap.isOpened():
-    print("❌ ERROR: Unable to open video file.")
+    print(" ERROR: Unable to open video file.")
     exit()
 
 frame_id = 0
@@ -64,7 +64,7 @@ cv2.setUseOptimized(True)
 while cap.isOpened():
     ret, frame = cap.read()
     if not ret:
-        print("✅ Video processing completed.")
+        print(" Video processing completed.")
         break  # Stop if no more frames
 
     if frame_id % FRAME_SKIP != 0:
@@ -128,4 +128,4 @@ for cls_id, stability_score in object_stability_scores.items():
         bear_alert_triggered = True
 
 if not alert_triggered:
-    print("✅ No wild animal detected above the threshold. No alert raised.")
+    print(" No wild animal detected above the threshold. No alert raised.")
