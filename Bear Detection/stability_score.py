@@ -39,7 +39,7 @@ frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
 frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
 if fps == 0 or frame_width == 0 or frame_height == 0:
-    print("❌ ERROR: Video properties are invalid. Check your input file.")
+    print(" ERROR: Video properties are invalid. Check your input file.")
     exit()
 
 # Ensure FPS is valid
