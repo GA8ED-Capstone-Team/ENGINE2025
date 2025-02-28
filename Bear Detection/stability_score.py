@@ -20,7 +20,7 @@ STABILITY_THRESHOLD = 0.2  # If stability score > 0.2, trigger alert
 MIN_FRAME_PERSISTENCE = 3  # Reduced from 5 to 3
 
 # List of Wild Animal Class IDs
-WILD_ANIMALS = {21: "bear", 8: "wolf", 12: "deer"}  # Add more if needed
+WILD_ANIMALS = {21: "bear", 8: "wolf"}  
 
 # Open Video
 video_path = "/home/realtimeidns/Downloads/WATCH Security camera captures black bear outside Greenleaf home.mp4"
