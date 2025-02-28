@@ -14,7 +14,7 @@ tracker = DeepSort(max_age=30, nn_budget=70, max_iou_distance=0.5)
 
 # Constants
 FRAME_SKIP = 2  
-OUTPUT_VIDEO_PATH = "video caption.mp4"
+OUTPUT_VIDEO_PATH = "customized_name.mp4"
 CONFIDENCE_THRESHOLD = 0.7  # Lowered for better sensitivity
 STABILITY_THRESHOLD = 0.2  # If stability score > 0.2, trigger alert
 MIN_FRAME_PERSISTENCE = 3  # Reduced from 5 to 3
