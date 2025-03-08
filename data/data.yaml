@@ -1,0 +1,5 @@
+train: C:/Users/jsjjz/Desktop/License Plate/data/train
+val: C:/Users/jsjjz/Desktop/License Plate/data/valid
+test: C:/Users/jsjjz/Desktop/License Plate/data/test
+nc: 1
+names: ['license-plate-annotation']
