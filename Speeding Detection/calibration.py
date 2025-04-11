@@ -10,7 +10,7 @@ import filters
 from yolo_detector import YoloDetector
 from dpsort_tracker import DeepSortTracker
 import torch
-from transformers import SegformerForSemanticSegmentation, SegformerImageProcessor
+# from transformers import SegformerForSemanticSegmentation, SegformerImageProcessor
 
 
 
@@ -20,15 +20,15 @@ DATASET_PATH = "C:\DataSets"
 ROADS_FOLDER = os.path.join(DATASET_PATH, "RoadsCropped")
 
 # Initialize SegFormer-b5 (higher accuracy, larger model)
-model_name = "nvidia/segformer-b5-finetuned-cityscapes-1024-1024"
-model = SegformerForSemanticSegmentation.from_pretrained(model_name)
-processor = SegformerImageProcessor(
-    do_resize=True,
-    do_normalize=True,
-    do_random_crop=False,
-    do_pad=False
-)
-model.eval()  # Disable dropout layers
+# model_name = "nvidia/segformer-b5-finetuned-cityscapes-1024-1024"
+# model = SegformerForSemanticSegmentation.from_pretrained(model_name)
+# processor = SegformerImageProcessor(
+#     do_resize=True,
+#     do_normalize=True,
+#     do_random_crop=False,
+#     do_pad=False
+# )
+# model.eval()  # Disable dropout layers
 
 # cap = cv2.VideoCapture(Video1)
 # assert cap.isOpened(), "Error reading video file"
@@ -193,7 +193,41 @@ def get_driveway_mask(img):
         
     return driveway_mask
 
-def findRoadPlane(img, kernelSize=3, Sigma=5.0, High=0.6, Low=0.4, numLines=6):
+# Function to draw detected lines
+def draw_lines(color_img, empty_img,line, color):
+    slope, intercept = line[0], line[1]
+    x1, y1 = 0, int(intercept)
+    x2, y2 = color_img.shape[1], int(slope * color_img.shape[1] + intercept)
+    cv2.line(color_img, (x1, y1), (x2, y2), color, 3)
+    cv2.line(empty_img, (x1, y1), (x2, y2), color, 3)
+
+def find_outermost_lines(lines):
+    """Takes in a bunch of lines in the format (m,b) and finds the 
+    two outermost lines in the image"""
+
+    min_line = None
+    max_line = None
+    min_x = float('inf')
+    max_x = float('-inf')
+
+    for line in lines:
+        m, b = line
+        x = -b / m # Calculate x-intercept: x = -b / m
+
+        # Update leftmost line
+        if x < min_x:
+            min_x = x
+            min_line = line
+
+        # Update rightmost line
+        if x > max_x:
+            max_x = x
+            max_line = line
+
+    return min_line, max_line
+
+
+def findCarEdges(img, kernelSize=3, Sigma=5.0, High=0.6, Low=0.4, numLines=6):
     """
     Detects road edges using Canny edge detection and Hough Transform.
     Displays exactly 6 detected straight lines on the image.
@@ -209,18 +243,21 @@ def findRoadPlane(img, kernelSize=3, Sigma=5.0, High=0.6, Low=0.4, numLines=6):
 
     # Extract 6 strongest peaks from the Hough accumulator
     num_lines = numLines
-    peak_threshold = 0.5 * np.max(acc)  
+    peak_threshold = 0.5 * np.max(acc)  # Relative threshold for strong peaks (filters out irrelevent lines)
 
-    for _ in range(num_lines):
-        idx = np.argmax(acc)  # Find peak index
-        if acc[idx // acc.shape[1], idx % acc.shape[1]] < peak_threshold:
-            break  # Stop if remaining peaks are too weak
+    # for _ in range(num_lines):
+    while (len(detected_lines) < num_lines): 
+        idx = np.argmax(acc)  # Find peak index (idx is flattened - needs to be converted back to (row,colomn))
         r_idx, t_idx = divmod(idx, acc.shape[1])  # Convert to 2D indices
-        acc[r_idx, t_idx] = 0  # Suppress this peak to avoid duplicate detection
-        acc[r_idx, max(t_idx-5, 0):t_idx+5] = 0  # Suppress nearby peaks
+        if acc[r_idx, t_idx] < peak_threshold: 
+            break  # Stop if remaining peaks are too weak
 
         rho = rhos[r_idx]
         theta = thetas[t_idx]
+        
+        acc[r_idx, t_idx] = 0  # Suppress this peak to avoid duplicate detection
+        acc[max(r_idx-5, 0):r_idx+5, max(t_idx-5, 0):t_idx+5] = 0  # Suppress nearby peaks to avoid crowding one region
+
 
         # Convert Hough parameters to Cartesian line representation
         if np.sin(theta) != 0:  # Avoid division by zero
@@ -228,30 +265,30 @@ def findRoadPlane(img, kernelSize=3, Sigma=5.0, High=0.6, Low=0.4, numLines=6):
             intercept = (rho / np.sin(theta))  # y-intercept
             detected_lines.append((slope, intercept))
     
-    detected_lines = filter_invalid_slopes(detected_lines, min_slope=0.001, max_slope=np.tan(np.deg2rad(80)))
-    detected_lines = filter_short_lines(detected_lines, min_length=50)
+        # detected_lines = filter_invalid_slopes(detected_lines, min_slope=0.001, max_slope=np.tan(np.deg2rad(70)))
+        # detected_lines = filter_short_lines(detected_lines, min_length=50)
 
-    # Convert grayscale image to color for visualization
+    # Convert grayscale image back to color
     color_img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
     # Function to draw detected lines
-    def draw_lines(lines, color):
-        for slope, intercept in lines:
-            x1, y1 = 0, int(intercept)
-            x2, y2 = img.shape[1], int(slope * img.shape[1] + intercept)
-            cv2.line(color_img, (x1, y1), (x2, y2), color, 3)
+    def draw_lines(line, color):
+        slope, intercept = line[0], line[1]
+        x1, y1 = 0, int(intercept)
+        x2, y2 = img.shape[1], int(slope * img.shape[1] + intercept)
+        cv2.line(color_img, (x1, y1), (x2, y2), color, 3)
 
-    # Draw 6 detected lines in different colors
+    # Draw detected lines in 6 different colors
     colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), 
               (255, 255, 0), (255, 0, 255), (0, 255, 255)]  # 6 distinct colors
 
     for i, line in enumerate(detected_lines):
-        draw_lines([line], colors[i % len(colors)])  
+        draw_lines(line, colors[i % len(colors)])  
 
     color_img = cv2.cvtColor(color_img, cv2.COLOR_BGR2RGB)
     edges = (edges * 255).astype("uint8")
 
-    return color_img, edges  # Return color_img and edges for debugging
+    return detected_lines, color_img, edges  # Return color_img and edges for debugging
 
 def findROIBoundingBoxes(VIDEO_PATH, YOLO_PATH, threshold_ratio=0.1):
     """ 
@@ -332,83 +369,83 @@ def findROIBoundingBoxes(VIDEO_PATH, YOLO_PATH, threshold_ratio=0.1):
     
     return output_img, lines
 
-def findROIDeepLearning(img):
-    # Get refined road mask using SegFormer
-    inputs = processor(images=img, return_tensors="pt")
-    with torch.no_grad():
-        with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
-            outputs = model(**inputs.to(model.device))
+# def findROIDeepLearning(img):
+#     # Get refined road mask using SegFormer
+#     inputs = processor(images=img, return_tensors="pt")
+#     with torch.no_grad():
+#         with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
+#             outputs = model(**inputs.to(model.device))
     
-    logits = torch.nn.functional.interpolate(
-        outputs.logits,
-        size=img.shape[:2],
-        mode='bilinear',
-        align_corners=False
-    )
+#     logits = torch.nn.functional.interpolate(
+#         outputs.logits,
+#         size=img.shape[:2],
+#         mode='bilinear',
+#         align_corners=False
+#     )
     
-    mask = torch.argmax(logits, dim=1).squeeze().cpu().numpy()
-    road_mask = (mask == 0).astype(np.uint8) * 255
+#     mask = torch.argmax(logits, dim=1).squeeze().cpu().numpy()
+#     road_mask = (mask == 0).astype(np.uint8) * 255
 
-    # 1. Mask refinement using morphological operations
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9,9))
-    road_mask = cv2.morphologyEx(road_mask, cv2.MORPH_CLOSE, kernel, iterations=2)
-    road_mask = cv2.morphologyEx(road_mask, cv2.MORPH_OPEN, kernel, iterations=1)
+#     # 1. Mask refinement using morphological operations
+#     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9,9))
+#     road_mask = cv2.morphologyEx(road_mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+#     road_mask = cv2.morphologyEx(road_mask, cv2.MORPH_OPEN, kernel, iterations=1)
 
-    # Get user-defined driveway mask
-    driveway_mask = get_driveway_mask(img)
+#     # Get user-defined driveway mask
+#     driveway_mask = get_driveway_mask(img)
     
-    # Exclude driveways from road mask
-    road_mask = cv2.bitwise_and(road_mask, cv2.bitwise_not(driveway_mask))
+#     # Exclude driveways from road mask
+#     road_mask = cv2.bitwise_and(road_mask, cv2.bitwise_not(driveway_mask))
 
-    # 2. Edge detection with noise reduction
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    blurred = cv2.GaussianBlur(gray, (5,5), sigmaX=2, sigmaY=2)
-    masked_img = cv2.bitwise_and(blurred, blurred, mask=road_mask)
+#     # 2. Edge detection with noise reduction
+#     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+#     blurred = cv2.GaussianBlur(gray, (5,5), sigmaX=2, sigmaY=2)
+#     masked_img = cv2.bitwise_and(blurred, blurred, mask=road_mask)
 
-    # 3. Adaptive Canny with stricter thresholds
-    median = np.median(masked_img[masked_img > 0])
-    lower = int(max(50, 0.7 * median))  # Higher minimum threshold
-    upper = int(min(200, 1.3 * median))
-    edges = cv2.Canny(masked_img, lower, upper)
+#     # 3. Adaptive Canny with stricter thresholds
+#     median = np.median(masked_img[masked_img > 0])
+#     lower = int(max(50, 0.7 * median))  # Higher minimum threshold
+#     upper = int(min(200, 1.3 * median))
+#     edges = cv2.Canny(masked_img, lower, upper)
 
-    # 4. Road-aligned Hough transform filtering
-    lines = cv2.HoughLinesP(
-        edges, 
-        rho=2, 
-        theta=np.pi/180, 
-        threshold=75,  # Increased threshold
-        minLineLength=150,  # Longer minimum length
-        maxLineGap=20      # Smaller gap tolerance
-    )
+#     # 4. Road-aligned Hough transform filtering
+#     lines = cv2.HoughLinesP(
+#         edges, 
+#         rho=2, 
+#         theta=np.pi/180, 
+#         threshold=75,  # Increased threshold
+#         minLineLength=150,  # Longer minimum length
+#         maxLineGap=20      # Smaller gap tolerance
+#     )
 
-    # 5. Geometric filtering of detected lines
-    filtered_lines = []
-    if lines is not None:
-        for line in lines:
-            x1, y1, x2, y2 = line[0]
+#     # # 5. Geometric filtering of detected lines
+#     # filtered_lines = []
+#     # if lines is not None:
+#     #     for line in lines:
+#     #         x1, y1, x2, y2 = line[0]
             
-            # Filter by line orientation (keep horizontal-ish lines)
-            angle = np.abs(np.arctan2(y2-y1, x2-x1) * 180/np.pi)
-            if not (160 > angle > 20):  # Adjust based on road geometry
-                continue
+#     #         # Filter by line orientation (keep horizontal-ish lines)
+#     #         angle = np.abs(np.arctan2(y2-y1, x2-x1) * 180/np.pi)
+#     #         if not (160 > angle > 20):  # Adjust based on road geometry
+#     #             continue
                 
-            # Verify line lies within road mask
-            points = np.linspace([x1,y1], [x2,y2], num=10)
-            road_points = sum(road_mask[int(p[1]), int(p[0])] > 0 for p in points)
-            if road_points >= 7:  # At least 70% on road
-                filtered_lines.append(line)
+#     #         # Verify line lies within road mask
+#     #         points = np.linspace([x1,y1], [x2,y2], num=10)
+#     #         road_points = sum(road_mask[int(p[1]), int(p[0])] > 0 for p in points)
+#     #         if road_points >= 7:  # At least 70% on road
+#     #             filtered_lines.append(line)
 
-    # 6. Line merging and visualization
-    output_img = img.copy()
-    if filtered_lines:
-        # Merge nearby lines (optional)
-        merged_lines = merge_lines(filtered_lines, max_gap=30, max_angle=10)
+#     # 6. Line merging and visualization
+#     output_img = img.copy()
+#     if lines:
+#         # Merge nearby lines (optional)
+#         merged_lines = merge_lines(lines, max_gap=30, max_angle=10)
         
-        for line in merged_lines:
-            x1, y1, x2, y2 = line
-            cv2.line(output_img, (x1,y1), (x2,y2), (0,255,0), 2)
+#         for line in merged_lines:
+#             x1, y1, x2, y2 = line
+#             cv2.line(output_img, (x1,y1), (x2,y2), (0,255,0), 2)
 
-    return road_mask, output_img
+#     return road_mask, output_img
 
 
 def findROIUser(img):
@@ -496,6 +533,64 @@ def BEVTransform(img, H, output_size=None):
         
     return cv2.warpPerspective(img, H, output_size, flags=cv2.INTER_LINEAR)
 
+def findRoadAlignedEdge(img, kernelSize=3, Sigma=5.0, High=0.6, Low=0.4, numLines=2):
+    """
+    Detects road edges using Canny edge detection and Hough Transform.
+    Displays exactly 6 detected straight lines on the image.
+    """
+
+    empty_img = np.zeros_like(cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)) # empty image to draw lines on
+
+    # Apply Canny edge detection
+    edges = canny(img, kernel_size=kernelSize, sigma=Sigma, high=High, low=Low)
+
+    # Perform Hough Transform
+    acc, rhos, thetas = hough_transform(edges)
+
+    # Store detected lines
+    detected_lines = []
+
+    # Extract 6 strongest peaks from the Hough accumulator
+    num_lines = numLines
+    peak_threshold = 0.5 * np.max(acc)  # Relative threshold for strong peaks (filters out irrelevent lines)
+
+    # for _ in range(num_lines):
+    while (len(detected_lines) < num_lines): 
+        idx = np.argmax(acc)  # Find peak index (idx is flattened - needs to be converted back to (row,colomn))
+        r_idx, t_idx = divmod(idx, acc.shape[1])  # Convert to 2D indices
+        if acc[r_idx, t_idx] < peak_threshold: 
+            break  # Stop if remaining peaks are too weak
+
+        rho = rhos[r_idx]
+        theta = thetas[t_idx]
+        
+        acc[r_idx, t_idx] = 0  # Suppress this peak to avoid duplicate detection
+        acc[max(r_idx-100, 0):r_idx+100, max(t_idx-5, 0):t_idx+5] = 0  # Suppress nearby peaks to avoid crowding one region
+
+
+        # Convert Hough parameters to Cartesian line representation
+        if np.sin(theta) != 0:  # Avoid division by zero
+            slope = - (np.cos(theta) / np.sin(theta))  # Line slope
+            intercept = (rho / np.sin(theta))  # y-intercept
+            detected_lines.append((slope, intercept))
+    
+        # detected_lines = filter_invalid_slopes(detected_lines, min_slope=0.001, max_slope=np.tan(np.deg2rad(70)))
+        # detected_lines = filter_short_lines(detected_lines, min_length=50)
+
+    # Convert grayscale image back to color
+    color_img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+
+    # Draw detected lines in 6 different colors
+    colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), 
+              (255, 255, 0), (255, 0, 255), (0, 255, 255)]  # 6 distinct colors
+
+    for i, line in enumerate(detected_lines):
+        draw_lines(color_img, empty_img, line, colors[i % len(colors)])  
+
+    color_img = cv2.cvtColor(color_img, cv2.COLOR_BGR2RGB)
+    edges = (edges * 255).astype("uint8")
+
+    return detected_lines, color_img, edges  # Return color_img and edges for debugging
 
 
 def main():
@@ -531,33 +626,64 @@ def main():
     #     # Save result
     #     cv2.imwrite(output_path, lines)
     #     print(f"Canny edge detection result saved to {output_path}")
-    video = r"C:\DataSets\ShaiwalVids\20250120_225133000_iOS.MP4"
+    video = r"C:\DataSets\SeattleStreetVideo.mp4"
     yolo = r"C:\Users\bahaa\YOLO\yolo11x.pt"
 
     cap2 = cv2.VideoCapture(video)
     _, img = cap2.read()
     
+    #img_path = r"C:\DataSets\RoadsCropped\SeattleStreet.png"
+    # img = cv2.imread(img_path)
+    
+    """Code for Testing the BEV transformation with User inputed road region"""
     # Step 1: Let user define ROI
     roi_points, roi_mask = findROIUser(img)
-    
     if len(roi_points) != 4:
         print("Error: Exactly 4 points required for homography")
         return
-    
     # Step 2: Calculate homography matrix
     H, dst_points = CalculateHomography(img, roi_points)
-    
+    print(H)
     # Step 3: Apply BEV transformation
     bev_img = BEVTransform(img, H)
-    
     # Visualization
     cv2.imshow("Original ROI", cv2.bitwise_and(img, img, mask=roi_mask))
     cv2.imshow("Bird's Eye View", bev_img)
+    cv2.imwrite('output2.PNG', bev_img)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
-    # Save results
-    cv2.imwrite("bev_transform.jpg", bev_img)
+    # # Save results
+    # cv2.imwrite("bev_transform.jpg", bev_img)
+
+
+    #roi_points, roi_mask = findROIDeepLearning(img)
+
+    #lines, linesCar, edges = findCarEdges(img, kernelSize=3, Sigma=1.0, High=2, Low=1.5, numLines=1)
+    # lines, linedImage, edges = findRoadAlignedEdge(img, kernelSize=3, Sigma=1.0, High=2, Low=1.5, numLines=5)
+    # print(lines)
+    # lines = find_outermost_lines(lines)
+    # black_img = np.zeros_like(img)
+    # for line in lines:
+    #     draw_lines(img, black_img, line, (255,0,0))
+    
+    # y1, y2 = img.shape[0] / 3 , 5 * img.shape[0] / 6
+    # x1,x2 =(y1 - lines[0][1]) / lines[0][0], (y2 - lines[0][1]) / lines[0][0] 
+    # x3, x4 = (y1 - lines[1][1]) / lines[1][0], (y2 - lines[1][1]) / lines[1][0]
+    # corners = [(y1,x2),(y1,x4), (y2,x3),(y2,x1)]
+    # H,_ = CalculateHomography(img, corners)
+    # transformed = BEVTransform(img, H)
+
+    # cv2.imshow("BEV", transformed)    
+    # cv2.imshow('outermost edge lines', black_img)
+    # cv2.imshow('edges', edges)
+    # cv2.imshow('Lines on Road', linedImage)
+    # cv2.imwrite('output.PNG', linedImage)
+    # cv2.imwrite('output2.PNG', black_img)
+    # # cv2.imshow('Lines', linesCar)
+    # # cv2.imshow('Edges', edges)
+    # cv2.waitKey(0)
+    # cv2.destroyAllWindows()
 
 
     """this code is for findROIBoundingBoxes"""
