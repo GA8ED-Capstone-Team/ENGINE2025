@@ -1,0 +1,8 @@
+ultralytics
+torch
+deep_sort_realtime
+opencv-python-headless
+filterpy
+lap
+scikit-image
+boto3
