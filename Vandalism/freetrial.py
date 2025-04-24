@@ -12,7 +12,7 @@ MODEL_PATH = "/home/realtimeidns/Vandalism/yolo11x.pt"
 FRAME_OUTPUT_DIR = "frames_for_genai"
 CONFIDENCE_THRESHOLD = 0.25  # More sensitive detection
 FRAME_SKIP = 2
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or "AIzaSyBTIbICpwJKEcyqSc0fydk8hl1BR6qzkRI"
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or "my api key"
 
 #  Cell 3: Setup environment
 os.makedirs(FRAME_OUTPUT_DIR, exist_ok=True)
