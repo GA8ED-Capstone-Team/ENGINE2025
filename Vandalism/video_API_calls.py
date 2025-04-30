@@ -11,7 +11,7 @@ import google.generativeai as genai
 ​
 #  Cell 2: Configuration
 VIDEO_PATH = "/home/realtimeidns/Downloads/llmvand.mp4"
-GEMINI_API_KEY = os.getenv("AIzaSyBTIbICpwJKEcyqSc0fydk8hl1BR6qzkRI") or "AIzaSyBTIbICpwJKEcyqSc0fydk8hl1BR6qzkRI"
+GEMINI_API_KEY = os.getenv("my api key") or "my api key"
 ​
 # Set up Gemini
 genai.configure(api_key=GEMINI_API_KEY)
