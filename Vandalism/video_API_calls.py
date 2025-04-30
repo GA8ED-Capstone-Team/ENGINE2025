@@ -1,5 +1,4 @@
 
-Code
 #  Cell 1: Import libraries
 import os
 import cv2
