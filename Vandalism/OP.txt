@@ -1,66 +1,66 @@
  Scanning video: /home/realtimeidns/Downloads/llmvand.mp4
-📸 Saved frame: frames_for_genai/frame_39061c03.jpg
-🤖 Gemini Response:
+ Saved frame: frames_for_genai/frame_39061c03.jpg
+ Gemini Response:
 Yes: kicking
 
-📸 Saved frame: frames_for_genai/frame_2e8179ae.jpg
-🤖 Gemini Response:
+ Saved frame: frames_for_genai/frame_2e8179ae.jpg
+ Gemini Response:
 Yes: kicking
 
-📸 Saved frame: frames_for_genai/frame_643870cd.jpg
-🤖 Gemini Response:
+ Saved frame: frames_for_genai/frame_643870cd.jpg
+ Gemini Response:
 Yes: kicking
 
-📸 Saved frame: frames_for_genai/frame_33db3ee3.jpg
-🤖 Gemini Response:
+ Saved frame: frames_for_genai/frame_33db3ee3.jpg
+ Gemini Response:
 Yes: kicking
 
-📸 Saved frame: frames_for_genai/frame_896eb4ba.jpg
-🤖 Gemini Response:
+ Saved frame: frames_for_genai/frame_896eb4ba.jpg
+ Gemini Response:
 Yes: kicking
 
 
-📸 Saved frame: frames_for_genai/frame_c605e8fa.jpg
-🤖 Gemini Response:
+ Saved frame: frames_for_genai/frame_c605e8fa.jpg
+ Gemini Response:
 Yes: kicking
 
-📸 Saved frame: frames_for_genai/frame_97067fd8.jpg
-🤖 Gemini Response:
+ Saved frame: frames_for_genai/frame_97067fd8.jpg
+ Gemini Response:
 Yes: kicking
 
-📸 Saved frame: frames_for_genai/frame_1164455f.jpg
-🤖 Gemini Response:
+ Saved frame: frames_for_genai/frame_1164455f.jpg
+ Gemini Response:
 Yes: kicking
 
-📸 Saved frame: frames_for_genai/frame_221b23e3.jpg
-🤖 Gemini Response:
+ Saved frame: frames_for_genai/frame_221b23e3.jpg
+ Gemini Response:
 Yes: kicking
 
-📸 Saved frame: frames_for_genai/frame_f13482cd.jpg
-🤖 Gemini Response:
+ Saved frame: frames_for_genai/frame_f13482cd.jpg
+ Gemini Response:
 Yes: kicking
 
-📸 Saved frame: frames_for_genai/frame_abb1e9fa.jpg
-🤖 Gemini Response:
+ Saved frame: frames_for_genai/frame_abb1e9fa.jpg
+ Gemini Response:
 Yes: kicking
 
-📸 Saved frame: frames_for_genai/frame_b5334d9f.jpg
-🤖 Gemini Response:
+ Saved frame: frames_for_genai/frame_b5334d9f.jpg
+ Gemini Response:
 Yes: kicking
 
-📸 Saved frame: frames_for_genai/frame_9333f4b1.jpg
-🤖 Gemini Response:
+ Saved frame: frames_for_genai/frame_9333f4b1.jpg
+ Gemini Response:
 Yes: kicking
 
-📸 Saved frame: frames_for_genai/frame_f4ad096d.jpg
-🤖 Gemini Response:
+ Saved frame: frames_for_genai/frame_f4ad096d.jpg
+ Gemini Response:
 Yes: standing
 
-📸 Saved frame: frames_for_genai/frame_54863506.jpg
-🤖 Gemini Response:
+ Saved frame: frames_for_genai/frame_54863506.jpg
+ Gemini Response:
 Yes: standing on
 
-📸 Saved frame: frames_for_genai/frame_e88b3cfc.jpg
+ Saved frame: frames_for_genai/frame_e88b3cfc.jpg
 ⚠ Gemini API error: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. [violations {
   quota_metric: "generativelanguage.googleapis.com/generate_content_free_tier_requests"
   quota_id: "GenerateRequestsPerMinutePerProjectPerModel-FreeTier"
