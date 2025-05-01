@@ -12,8 +12,9 @@ RUN apt-get update && apt-get install -y \
 # Set up Python environment
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-COPY inference.py .
+COPY utils.py .
+COPY main.py .
 
-CMD ["python", "inference.py"]
+CMD ["python", "main.py"]

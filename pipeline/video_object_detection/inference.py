@@ -14,7 +14,6 @@ if not s3_path:
 
 # TODO: Replace with custom model
 model = YOLO("yolov8n.pt")
-
 s3 = boto3.client("s3")
 
 
@@ -41,8 +40,10 @@ def run_yolo_deepsort(video_path):
     frame_data = []
 
     fps = cap.get(cv2.CAP_PROP_FPS)
-    skip = max(1, int(fps // 5))
-    tracker = DeepSort(max_age=skip * 5)
+    skip = max(1, int(fps))
+    tracker = DeepSort(
+        max_age=skip, nn_budget=70, max_iou_distance=0.5
+    )  # could be overkill, check it out
 
     while True:
         ret, frame = cap.read()
