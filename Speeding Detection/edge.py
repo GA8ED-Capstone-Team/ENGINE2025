@@ -456,15 +456,4 @@ def hough_transform(img):
       for i, rho_idx in enumerate(rhos_indices):
             accumulator[rho_idx, i] += 1
 
-    # Transform each point (x, y) in image
-    # Find rho corresponding to values in thetas
-    # and increment the accumulator in the corresponding coordiate.
-    ### YOUR CODE HERE
-    # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-
-
-    # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-    ### END YOUR CODE
-
     return accumulator, rhos, thetas
