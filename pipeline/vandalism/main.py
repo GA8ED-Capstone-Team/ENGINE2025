@@ -6,7 +6,7 @@ import os
 import tempfile
 from urllib.parse import urlparse
 
-classes_to_check = {"car", "person"}
+classes_to_check = {"person", "car", "bus", "truck", "motorcycle", "bicycle", "train"}
 VANDALISM_PROMPT = """
 "You are a neighborhood safety assistant. 
 Does this video show someone damaging a car—scratching, kicking, or breaking it? 
