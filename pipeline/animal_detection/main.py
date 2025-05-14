@@ -60,7 +60,7 @@ def main():
     max_stability_score = round(
         max(
             (score for score in animal_scores.values() if score is not None),
-            default=None,
+            default=0,
         ),
         4,
     )
