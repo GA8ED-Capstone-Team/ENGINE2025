@@ -6,7 +6,7 @@ import psycopg2
 
 # Global constants
 DB_SECRET_NAME = "ga8ed-db-userpass"
-KV_SECRET_NAME = "kv_secrets"
+KV_SECRET_NAME = "ga8ed-secrets"
 DB_NAME = "postgres"
 DB_SCHEMA = "ga8ed"
 DB_TABLE = "video_metadata"
