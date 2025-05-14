@@ -31,10 +31,10 @@ def insert_video_record(record_dict):
     record = (
         record_dict["video_id"],
         record_dict["tracked_predictions_path"],
-        'NULL',  # stability_score
-        'NULL',  # bear_alert
-        'NULL',  # vandalism_genai_response
-        'NULL',  # vandalism_alert
+        None,
+        None,
+        None,
+        None,
         record_dict["created_at"],
         record_dict["updated_at"],
     )
