@@ -20,7 +20,7 @@ RUN pip install --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY inference.py .
+COPY inference.py utils.py ./
 
 # Default command
 CMD ["python", "inference.py"]

@@ -7,6 +7,9 @@ import time
 from urllib.parse import urlparse
 from ultralytics import YOLO
 from deep_sort_realtime.deepsort_tracker import DeepSort
+import uuid
+from datetime import datetime
+from utils import insert_video_record
 
 s3_path = os.environ.get("VIDEO_S3_PATH")
 if not s3_path:
@@ -93,16 +96,31 @@ def run_yolo_deepsort(video_path):
 
 if __name__ == "__main__":
     start_time = time.time()
+    video_id = str(uuid.uuid4())
+    print(f"Video ID: {video_id}")
     print(f"Downloading video from {s3_path}")
     local_video, bucket, key = download_video_from_s3(s3_path)
 
     print("Running YOLO + DeepSORT inference...")
     predictions = run_yolo_deepsort(local_video)
+    predictions["video_id"] = video_id
 
     output_prefix = (
         f"object_detection_results/{os.path.splitext(os.path.basename(key))[0]}"
     )
     print("Uploading tracked results to S3...")
     upload_json_to_s3(predictions, bucket, output_prefix)
+
+    # Insert record into PostgreSQL
+    tracked_predictions_path = f"s3://{bucket}/{output_prefix}/tracked_predictions.json"
+    created_at = datetime.now()
+    updated_at = created_at
+    record_dict = {
+        "video_id": video_id,
+        "tracked_predictions_path": tracked_predictions_path,
+        "created_at": created_at,
+        "updated_at": updated_at
+    }
+    insert_video_record(record_dict)
 
     print(f"Processing complete. Total time taken: {time.time() - start_time}")

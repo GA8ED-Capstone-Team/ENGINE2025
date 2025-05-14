@@ -10,3 +10,4 @@ filterpy
 lap
 scikit-image
 boto3
+psycopg2-binary
