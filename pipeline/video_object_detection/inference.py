@@ -16,7 +16,7 @@ if not s3_path:
     raise ValueError("video path not provided")
 
 # TODO: Replace with custom model
-model = YOLO("yolov8n.pt")
+model = YOLO("yolo11n.pt")
 s3 = boto3.client("s3")
 
 # Colors for different object groups (BGR format)
