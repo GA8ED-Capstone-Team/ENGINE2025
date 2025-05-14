@@ -16,7 +16,7 @@ if not s3_path:
     raise ValueError("video path not provided")
 
 # TODO: Replace with custom model
-model = YOLO("yolo11n.pt")
+model = YOLO("yolov8n.pt")
 s3 = boto3.client("s3")
 
 # Colors for different object groups (BGR format)
@@ -154,8 +154,10 @@ def run_yolo_deepsort(video_path):
     fps = cap.get(cv2.CAP_PROP_FPS)
     skip = max(1, int(fps))
     tracker = DeepSort(
-        max_age=skip, nn_budget=70, max_iou_distance=0.5
-    )  # could be overkill, check it out
+        max_age=2,  # Track dies after missing 2 detection frames (2 * skip real frames)
+        nn_budget=70,
+        max_iou_distance=0.5,
+    )
 
     while True:
         ret, frame = cap.read()
