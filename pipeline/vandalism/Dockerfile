@@ -8,6 +8,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
-COPY main.py .
+# Copy application code
+COPY main.py utils.py ./
 
 CMD ["python", "main.py"]

@@ -6,6 +6,14 @@ import os
 import tempfile
 from urllib.parse import urlparse
 
+from utils import (
+    get_video_id_from_s3_path,
+    update_video_record,
+    parse_vandalism_response,
+    get_gemini_api_key,
+    get_video_path_from_db,
+)
+
 classes_to_check = {"person", "car", "bus", "truck", "motorcycle", "bicycle", "train"}
 VANDALISM_PROMPT = """
 "You are a neighborhood safety assistant. 
@@ -16,8 +24,15 @@ If yes, respond with: 'Yes: [action]'. If not, say 'No: [reason]'."
 s3 = boto3.client("s3")
 
 
-def download_video_from_s3(s3_uri: str) -> str:
+def download_predictions_from_s3(s3_uri):
+    parsed = urlparse(s3_uri)
+    bucket, key = parsed.netloc, parsed.path.lstrip("/")
+    local_path = os.path.join(tempfile.gettempdir(), os.path.basename(key))
+    s3.download_file(bucket, key, local_path)
+    return local_path, bucket, key
 
+
+def download_video_from_s3(s3_uri: str) -> str:
     parsed = urlparse(s3_uri)
     bucket = parsed.netloc
     key = parsed.path.lstrip("/")
@@ -26,17 +41,7 @@ def download_video_from_s3(s3_uri: str) -> str:
     return local_path
 
 
-def download_predictions_from_s3(s3_uri):
-
-    parsed = urlparse(s3_uri)
-    bucket, key = parsed.netloc, parsed.path.lstrip("/")
-    local_path = os.path.join(tempfile.gettempdir(), os.path.basename(key))
-    s3.download_file(bucket, key, local_path)
-    return local_path, bucket, key
-
-
 def contains_person_or_car(detections_path: str) -> bool:
-
     detections_path_local, _, _ = download_predictions_from_s3(detections_path)
     with open(detections_path_local, "r") as f:
         data = json.load(f)
@@ -49,8 +54,7 @@ def contains_person_or_car(detections_path: str) -> bool:
     return False
 
 
-def analyze_video_with_gemini(video_path: str, gemini_api_key: str) -> None:
-
+def analyze_video_with_gemini(video_path: str, gemini_api_key: str) -> tuple[bool, str]:
     genai.configure(api_key=gemini_api_key)
     gemini_model = genai.GenerativeModel("gemini-1.5-flash")
 
@@ -65,28 +69,37 @@ def analyze_video_with_gemini(video_path: str, gemini_api_key: str) -> None:
 
     try:
         response = gemini_model.generate_content(prompt)
-        print(f"\nGemini Response:\n{response.text}\n")
+        response_text = response.text
+        print(f"\nGemini Response:\n{response_text}\n")
+        return parse_vandalism_response(response_text)
     except Exception as e:
         print(f"Gemini API error: {e}")
+        return False, ""
 
 
 def main():
-    gemini_api_key = os.getenv("GEMINI_API_KEY")
-    video_s3_uri = os.getenv("VIDEO_S3_PATH", "")
     tracked_predictions = os.getenv("TRACKED_PREDICTIONS", "")
 
-    if not gemini_api_key:
-        raise ValueError("GEMINI_API_KEY environment variable not set.")
+    # Get video_id from S3 path
+    video_id = get_video_id_from_s3_path(tracked_predictions)
 
-    if not tracked_predictions:
-        raise ValueError("Detections is not provided.")
-
+    # Custom logic to only prompt VLM if there are person or car detections (can be refined)
     if not contains_person_or_car(tracked_predictions):
         print("No person or car detections found. Skipping Gemini API call.")
+        # Update database with no vandalism
+        update_video_record(video_id, "No person or car detected", False)
         return
 
+    # Get video path from database
+    video_s3_uri = get_video_path_from_db(video_id)
     video_path = download_video_from_s3(video_s3_uri)
-    analyze_video_with_gemini(video_path, gemini_api_key)
+    gemini_api_key = get_gemini_api_key()
+    vandalism_alert, vandalism_response = analyze_video_with_gemini(
+        video_path, gemini_api_key
+    )
+
+    # Update database with vandalism analysis results
+    update_video_record(video_id, vandalism_response, vandalism_alert)
 
 
 if __name__ == "__main__":
