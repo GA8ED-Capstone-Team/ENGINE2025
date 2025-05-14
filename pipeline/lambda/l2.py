@@ -16,11 +16,11 @@ SECURITY_GROUPS = [os.environ["L2_SECURITY_GROUP_ID"]]
 TASKS = [
     {
         "name": "vandalism",
-        "task_definition": "vandalism",
+        "task_definition": "vandalism_task",
     },
     {
         "name": "stab-score",
-        "task_definition": "stab-score",
+        "task_definition": "animal_detection_task",
         "environment_variables": {
             "STABILITY_THRESHOLD": "0.2",
         },
@@ -68,7 +68,11 @@ def run_ecs_task(
                 "assignPublicIp": "ENABLED",
             }
         },
-        overrides=[{"name": task_config["name"], "environment": env_vars}],
+        overrides={
+            "containerOverrides": [
+                {"name": task_config["name"], "environment": env_vars}
+            ]
+        },
     )
 
     print(
