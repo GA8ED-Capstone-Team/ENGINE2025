@@ -44,7 +44,7 @@ def insert_video_record(record_dict):
         f"""
         INSERT INTO {DB_SCHEMA}.{DB_TABLE} 
         ({TABLE_SCHEMA}) 
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
         record,
     )
