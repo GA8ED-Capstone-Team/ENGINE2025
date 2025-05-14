@@ -19,7 +19,6 @@ def get_db_userpass():
 
 
 def insert_video_record(record_dict):
-
     secrets = get_db_userpass()
     conn = psycopg2.connect(
         dbname=DB_NAME,
@@ -32,10 +31,10 @@ def insert_video_record(record_dict):
     record = (
         record_dict["video_id"],
         record_dict["tracked_predictions_path"],
-        "",
-        "",
-        "",
-        "",
+        None,  # stability_score
+        None,  # bear_alert
+        None,  # vandalism_genai_response
+        None,  # vandalism_alert
         record_dict["created_at"],
         record_dict["updated_at"],
     )
@@ -46,5 +45,4 @@ def insert_video_record(record_dict):
     conn.commit()
     cur.close()
     conn.close()
-
     print(f"Record inserted for Video ID: {record_dict['video_id']}")

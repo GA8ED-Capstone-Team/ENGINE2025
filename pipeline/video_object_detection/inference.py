@@ -119,7 +119,7 @@ if __name__ == "__main__":
         "video_id": video_id,
         "tracked_predictions_path": tracked_predictions_path,
         "created_at": created_at,
-        "updated_at": updated_at
+        "updated_at": updated_at,
     }
     insert_video_record(record_dict)
 
