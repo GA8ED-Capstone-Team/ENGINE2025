@@ -105,9 +105,7 @@ if __name__ == "__main__":
     predictions = run_yolo_deepsort(local_video)
     predictions["video_id"] = video_id
 
-    output_prefix = (
-        f"object_detection_results/{os.path.splitext(os.path.basename(key))[0]}"
-    )
+    output_prefix = f"object_detection_results/{video_id}"
     print("Uploading tracked results to S3...")
     upload_json_to_s3(predictions, bucket, output_prefix)
 

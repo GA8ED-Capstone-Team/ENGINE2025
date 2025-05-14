@@ -38,7 +38,7 @@ def insert_video_record(record_dict):
         record_dict["created_at"],
         record_dict["updated_at"],
     )
-    
+
     cur.execute(
         f"""
         INSERT INTO {DB_SCHEMA}.{DB_TABLE} 
