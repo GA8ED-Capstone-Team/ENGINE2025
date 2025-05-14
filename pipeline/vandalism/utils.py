@@ -46,7 +46,7 @@ def get_video_path_from_db(video_id):
 
     cur.execute(
         f"""
-        SELECT video_path
+        SELECT s3_path
         FROM {DB_SCHEMA}.{DB_TABLE}
         WHERE video_id = %s
         """,
