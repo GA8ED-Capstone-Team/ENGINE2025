@@ -235,14 +235,14 @@ if __name__ == "__main__":
     # Insert record into PostgreSQL
     tracked_predictions_uri = f"s3://{bucket}/{output_prefix}/tracked_predictions.json"
     annotated_video_uri = f"s3://{bucket}/{output_prefix}/annotated_video.mp4"
-    time = datetime.now()
+    t = datetime.now()
     record_dict = {
         "video_id": video_id,
         "video_uri": s3_path,
         "tracked_predictions_uri": tracked_predictions_uri,
         "annotated_video_uri": annotated_video_uri,
-        "created_at": time,
-        "updated_at": time,
+        "created_at": t,
+        "updated_at": t,
     }
     insert_video_record(record_dict)
 
