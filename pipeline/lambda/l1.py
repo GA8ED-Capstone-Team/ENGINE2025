@@ -14,13 +14,14 @@ CONTAINER_NAME = "video-detect"
 SUBNETS = [os.environ["L1_SUBNET_ID"]]
 SECURITY_GROUPS = [os.environ["L1_SECURITY_GROUP_ID"]]
 
+
 def lambda_handler(event, context):
 
     print("Received event:", json.dumps(event, indent=2))
 
     # Extract the S3 video path from event
-    bucket = event['Records'][0]['s3']['bucket']['name']
-    key = urllib.parse.unquote_plus(event['Records'][0]['s3']['object']['key'])
+    bucket = event["Records"][0]["s3"]["bucket"]["name"]
+    key = urllib.parse.unquote_plus(event["Records"][0]["s3"]["object"]["key"])
     video_s3_path = f"s3://{bucket}/{key}"
     print("Launching ECS task with video:", video_s3_path)
 
@@ -33,21 +34,18 @@ def lambda_handler(event, context):
             "awsvpcConfiguration": {
                 "subnets": SUBNETS,
                 "securityGroups": SECURITY_GROUPS,
-                "assignPublicIp": "ENABLED"
+                "assignPublicIp": "ENABLED",
             }
         },
         overrides={
-            "containerOverrides": [{
-                "name": CONTAINER_NAME,
-                "environment": [
-                    {"name": "VIDEO_S3_PATH", "value": video_s3_path}
-                ]
-            }]
-        }
+            "containerOverrides": [
+                {
+                    "name": CONTAINER_NAME,
+                    "environment": [{"name": "VIDEO_S3_PATH", "value": video_s3_path}],
+                }
+            ]
+        },
     )
     print("ECS Task launched:", json.dumps(response, indent=4, default=str))
 
-    return {
-        "statusCode": 200,
-        "body": json.dumps("L1_task triggered successfully.")
-    }
+    return {"statusCode": 200, "body": json.dumps("L1 task triggered successfully.")}
