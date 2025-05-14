@@ -152,10 +152,10 @@ def run_yolo_deepsort(video_path):
     frame_data = []
 
     fps = cap.get(cv2.CAP_PROP_FPS)
-    skip = max(1, int(fps) // 3)
+    skip = max(1, int(fps) // 2)  # Process every 30th frame at 30fps
     tracker = DeepSort(
-        max_age=2,  # Track dies after missing 2 detection frames (2 * skip real frames)
-        nn_budget=70,
+        max_age=2,  # Track dies after missing 2 detection frames
+        nn_budget=30,  # Reduced from 70 to 30 for speed
         max_iou_distance=0.5,
     )
 
