@@ -39,7 +39,13 @@ def insert_video_record(record_dict):
         record_dict["updated_at"],
     )
     cur.execute(
-        f"INSERT INTO {DB_SCHEMA}.{DB_TABLE} ({TABLE_SCHEMA}) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+        f"""
+        INSERT INTO {DB_SCHEMA}.{DB_TABLE} 
+        (video_id, tracked_predictions_path, stability_score, bear_alert, 
+         vandalism_genai_response, vandalism_alert, created_at, updated_at) 
+        VALUES (%s, %s, NULLIF(%s, ''), NULLIF(%s, ''), NULLIF(%s, ''), 
+                NULLIF(%s, ''), %s, %s)
+        """,
         record,
     )
     conn.commit()
