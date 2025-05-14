@@ -23,7 +23,7 @@ def get_gemini_api_key():
     client = boto3.client("secretsmanager")
     response = client.get_secret_value(SecretId=KV_SECRET_NAME)
     secret = json.loads(response["SecretString"])
-    return secret["gemini_api_key"]
+    return secret["GEMINI_API_KEY"]
 
 
 def get_video_id_from_s3_path(s3_path):
