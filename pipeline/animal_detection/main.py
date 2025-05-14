@@ -57,8 +57,12 @@ def main():
     for class_id, animal_name in WILD_ANIMALS.items():
         score = stability_scores.get(class_id, {}).get("stability_score", None)
         animal_scores[animal_name] = score
-    max_stability_score = max(
-        (score for score in animal_scores.values() if score is not None), default=None
+    max_stability_score = round(
+        max(
+            (score for score in animal_scores.values() if score is not None),
+            default=None,
+        ),
+        4,
     )
 
     # Custom logic: Any wild animal alert triggers the bear_alert (can be refined)
