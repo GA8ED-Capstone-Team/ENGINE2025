@@ -8,7 +8,7 @@ DB_SECRET_NAME = "ga8ed-db-userpass"
 DB_NAME = "postgres"
 DB_SCHEMA = "ga8ed"
 DB_TABLE = "video_metadata"
-TABLE_SCHEMA = "video_id, tracked_predictions_path, stability_score, bear_alert, vandalism_genai_response, vandalism_alert, created_at, updated_at"
+TABLE_SCHEMA = "video_id, video_uri, tracked_predictions_path, stability_score, bear_alert, vandalism_genai_response, vandalism_alert, created_at, updated_at"
 
 
 def get_db_userpass():
@@ -30,6 +30,7 @@ def insert_video_record(record_dict):
     cur = conn.cursor()
     record = (
         record_dict["video_id"],
+        record_dict["video_uri"],
         record_dict["tracked_predictions_path"],
         None,
         None,
@@ -42,8 +43,7 @@ def insert_video_record(record_dict):
     cur.execute(
         f"""
         INSERT INTO {DB_SCHEMA}.{DB_TABLE} 
-        (video_id, tracked_predictions_path, stability_score, bear_alert, 
-         vandalism_genai_response, vandalism_alert, created_at, updated_at) 
+        ({TABLE_SCHEMA}) 
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """,
         record,

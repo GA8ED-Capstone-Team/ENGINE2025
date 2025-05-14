@@ -115,6 +115,7 @@ if __name__ == "__main__":
     updated_at = created_at
     record_dict = {
         "video_id": video_id,
+        "video_uri": s3_path,
         "tracked_predictions_path": tracked_predictions_path,
         "created_at": created_at,
         "updated_at": updated_at,
