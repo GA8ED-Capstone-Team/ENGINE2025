@@ -12,17 +12,18 @@ SUBNETS = [os.environ["L2_SUBNET_ID"]]
 SECURITY_GROUPS = [os.environ["L2_SECURITY_GROUP_ID"]]
 
 # Task configurations
+# TODO: Need to add speed estimation here
 TASKS = [
     {
         "name": "vandalism",
         "task_definition": "vandalism",
-        "environment": ["TRACKED_PREDICTIONS"],
     },
     {
         "name": "stab-score",
         "task_definition": "stab-score",
-        "environment": ["TRACKED_PREDICTIONS", "STABILITY_THRESHOLD"],
-        "environment_variables": {"STABILITY_THRESHOLD": "0.2"},
+        "environment_variables": {
+            "STABILITY_THRESHOLD": "0.2",
+        },
     },
 ]
 
@@ -47,10 +48,10 @@ def run_ecs_task(
     Returns:
         Response from ECS run_task API
     """
-    # Build environment variables
+    # Base environment variables that all tasks need
     env_vars = [{"name": "TRACKED_PREDICTIONS", "value": tracked_predictions}]
 
-    # Add any extra environment variables
+    # Add task-specific environment variables if any
     if "environment_variables" in task_config:
         for name, value in task_config["environment_variables"].items():
             env_vars.append({"name": name, "value": value})
@@ -67,11 +68,7 @@ def run_ecs_task(
                 "assignPublicIp": "ENABLED",
             }
         },
-        overrides={
-            "containerOverrides": [
-                {"name": task_config["name"], "environment": env_vars}
-            ]
-        },
+        overrides=[{"name": task_config["name"], "environment": env_vars}],
     )
 
     print(
