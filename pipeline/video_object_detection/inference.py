@@ -234,7 +234,6 @@ if __name__ == "__main__":
     tracked_predictions_uri = f"s3://{bucket}/{output_prefix}/tracked_predictions.json"
     annotated_video_uri = f"s3://{bucket}/{output_prefix}/annotated_video.mp4"
     time = datetime.now()
-    updated_at = created_at
     record_dict = {
         "video_id": video_id,
         "video_uri": s3_path,
