@@ -31,20 +31,20 @@ def insert_video_record(record_dict):
     record = (
         record_dict["video_id"],
         record_dict["tracked_predictions_path"],
-        None,  # stability_score
-        None,  # bear_alert
-        None,  # vandalism_genai_response
-        None,  # vandalism_alert
+        'NULL',  # stability_score
+        'NULL',  # bear_alert
+        'NULL',  # vandalism_genai_response
+        'NULL',  # vandalism_alert
         record_dict["created_at"],
         record_dict["updated_at"],
     )
+    
     cur.execute(
         f"""
         INSERT INTO {DB_SCHEMA}.{DB_TABLE} 
         (video_id, tracked_predictions_path, stability_score, bear_alert, 
          vandalism_genai_response, vandalism_alert, created_at, updated_at) 
-        VALUES (%s, %s, NULLIF(%s, ''), NULLIF(%s, ''), NULLIF(%s, ''), 
-                NULLIF(%s, ''), %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """,
         record,
     )
