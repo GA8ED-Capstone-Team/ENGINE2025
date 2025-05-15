@@ -3,7 +3,7 @@ import json
 import numpy as np
 import psycopg2
 import boto3
-import json
+import tempfile
 from urllib.parse import urlparse
 
 # Global constants
@@ -12,7 +12,11 @@ DB_NAME = "postgres"
 DB_SCHEMA = "ga8ed"
 DB_TABLE = "video_metadata"
 
-BEAR_CLASS = 21
+# Animal detection configurations
+WILD_ANIMALS = {
+    21: "bear",
+}
+STABILITY_THRESHOLD = float(os.environ.get("STABILITY_THRESHOLD", "0.5"))
 
 
 def get_db_userpass():
@@ -29,7 +33,7 @@ def get_video_id_from_s3_path(s3_path):
     return path_parts[-2]
 
 
-def update_video_record(video_id, stability_score, bear_alert):
+def update_video_record(video_id, stability_score, alert):
     secrets = get_db_userpass()
     conn = psycopg2.connect(
         dbname=DB_NAME,
@@ -48,7 +52,7 @@ def update_video_record(video_id, stability_score, bear_alert):
             updated_at = CURRENT_TIMESTAMP
         WHERE video_id = %s
         """,
-        (stability_score, bear_alert, video_id),
+        (stability_score, alert, video_id),
     )
     conn.commit()
     cur.close()
@@ -56,11 +60,29 @@ def update_video_record(video_id, stability_score, bear_alert):
     print(f"Updated record for Video ID: {video_id}")
 
 
+def download_predictions_from_s3(s3_uri):
+    parsed = urlparse(s3_uri)
+    bucket, key = parsed.netloc, parsed.path.lstrip("/")
+    local_path = os.path.join(tempfile.gettempdir(), os.path.basename(key))
+    s3 = boto3.client("s3")
+    s3.download_file(bucket, key, local_path)
+    return local_path, bucket, key
+
+
+def upload_json_to_s3(json_data, bucket, prefix, filename="stability_scores.json"):
+    output_path = os.path.join(tempfile.gettempdir(), filename)
+    with open(output_path, "w") as f:
+        json.dump(json_data, f, indent=2)
+    s3 = boto3.client("s3")
+    s3.upload_file(output_path, bucket, f"{prefix}/{filename}")
+    print(f"✅ Uploaded results to s3://{bucket}/{prefix}/{filename}")
+
+
 def compute_stability_scores(
     json_input_path: str,
     json_output_path: str,
-    stability_threshold: float,
-    wild_animals: dict,
+    stability_threshold: float = STABILITY_THRESHOLD,
+    wild_animals: dict = WILD_ANIMALS,
     min_frame_persistence: int = 10,
     window_size: int = 100,
     raise_alerts: bool = True,
@@ -102,14 +124,10 @@ def compute_stability_scores(
                 "mean_confidence": float(np.mean(confs)),
                 "persistence": pers,
             }
-
-            # Check if this is a wild animal and if it should trigger an alert
+            # Alert trigger check
             if cls in wild_animals:
-                is_bear = cls == BEAR_CLASS
                 should_alert = (score > stability_threshold) or (
-                    is_bear
-                    and pers >= min_frame_persistence
-                    and float(np.mean(confs)) > 0.5
+                    pers >= min_frame_persistence and float(np.mean(confs)) > 0.5
                 )
                 animal_alerts[wild_animals[cls]] = should_alert
 
