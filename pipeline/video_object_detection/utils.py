@@ -37,7 +37,7 @@ COLORS = {
 VIDEO_CODECS = {
     ".mp4": "mp4v",
     ".avi": "XVID",
-    ".mov": "mp4v",
+    ".mov": "avc1",
 }
 
 # Object class to group mapping
