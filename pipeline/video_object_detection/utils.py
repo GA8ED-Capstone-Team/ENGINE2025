@@ -27,10 +27,17 @@ TABLE_SCHEMA = "video_id, video_uri, tracked_predictions_uri, annotated_video_ur
 
 # Colors for different object groups (BGR format)
 COLORS = {
-    "person": (0, 255, 0),  # Green for people
-    "vehicle": (255, 0, 0),  # Blue for vehicles
-    "animal": (0, 0, 255),  # Red for animals
-    "default": (255, 255, 0),  # Cyan for everything else
+    "person": (0, 255, 0),
+    "vehicle": (255, 0, 0),
+    "animal": (0, 0, 255),
+    "default": (255, 255, 0),
+}
+
+# Video codec mapping
+VIDEO_CODECS = {
+    ".mp4": "mp4v",
+    ".avi": "XVID",
+    ".mov": "mp4v",
 }
 
 # Object class to group mapping
@@ -161,7 +168,13 @@ def create_annotated_video(video_path, frame_data, output_path):
         new_fps = original_fps
     print(f"Original FPS: {original_fps}, New FPS: {new_fps}")
 
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    input_format = os.path.splitext(video_path)[1].lower()
+    if input_format not in VIDEO_CODECS:
+        print(f"Warning: Unknown video format {input_format}, defaulting to mp4v codec")
+        output_path = os.path.splitext(output_path)[0] + ".mp4"
+    codec = VIDEO_CODECS.get(input_format, "mp4v")
+
+    fourcc = cv2.VideoWriter_fourcc(*codec)
     out = cv2.VideoWriter(output_path, fourcc, new_fps, (width, height))
     frame_detections = {frame["frame_number"]: frame["tracks"] for frame in frame_data}
     for frame_idx in sorted(frame_detections.keys()):

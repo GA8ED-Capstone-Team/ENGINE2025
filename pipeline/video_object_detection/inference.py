@@ -37,17 +37,21 @@ def main():
 
     # Create and upload annotated video
     print("Creating annotated video")
+    input_format = os.path.splitext(local_video)[1].lower()
     annotated_video_path = os.path.join(
         tempfile.gettempdir(), f"annotated_{os.path.basename(local_video)}"
     )
     create_annotated_video(local_video, predictions["frames"], annotated_video_path)
     upload_video_to_s3(
-        annotated_video_path, bucket, output_prefix, filename="annotated_video.mp4"
+        annotated_video_path,
+        bucket,
+        output_prefix,
+        filename=f"annotated_video{input_format}",
     )
 
     # Insert record into PostgreSQL
     tracked_predictions_uri = f"s3://{bucket}/{output_prefix}/tracked_predictions.json"
-    annotated_video_uri = f"s3://{bucket}/{output_prefix}/annotated_video.mp4"
+    annotated_video_uri = f"s3://{bucket}/{output_prefix}/annotated_video{input_format}"
     t = datetime.now()
     record_dict = {
         "video_id": video_id,
