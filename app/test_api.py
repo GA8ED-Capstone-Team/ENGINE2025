@@ -1,18 +1,6 @@
 import requests
 import json
 from datetime import datetime
-import os
-import boto3
-
-# Set AWS region for EC2 environment
-os.environ["AWS_DEFAULT_REGION"] = "us-east-1"  # or your preferred region
-
-# Verify AWS configuration
-try:
-    session = boto3.session.Session()
-    print(f"Using AWS Region: {session.region_name}")
-except Exception as e:
-    print(f"Warning: AWS configuration error: {str(e)}")
 
 BASE_URL = "http://localhost:8000"
 

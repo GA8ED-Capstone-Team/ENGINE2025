@@ -1,6 +1,10 @@
 import psycopg2
 import boto3
 import json
+import os
+
+# Set AWS region
+os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
 
 # Database configuration
 DB_SECRET_NAME = "ga8ed-db-userpass"

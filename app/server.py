@@ -1,7 +1,5 @@
 from fastapi import FastAPI, Query, HTTPException
 from typing import Optional, List
-from datetime import datetime
-
 from models import VideoResponse
 from utils import execute_query, DB_SCHEMA, DB_TABLE
 
