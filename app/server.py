@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import FastAPI, Query, HTTPException, Path
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List
 from models import VideoResponse
@@ -110,7 +110,7 @@ async def list_videos(
 
 @app.get(f"{API_PREFIX}/videos/{{video_id}}", response_model=VideoResponse)
 async def get_video(
-    video_id: str = Query(..., description="Unique identifier of the video")
+    video_id: str = Path(..., description="Unique identifier of the video")
 ):
     """
     Get detailed information about a specific video.
