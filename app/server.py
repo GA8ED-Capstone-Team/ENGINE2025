@@ -1,20 +1,50 @@
 from fastapi import FastAPI, Query, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List
 from models import VideoResponse
 from utils import execute_query, DB_SCHEMA, DB_TABLE
 from logger import log_info, log_error, log_debug, log_warning
 
+# API version
+API_VERSION = "v1"
+API_PREFIX = f"/api/{API_VERSION}"
+
 app = FastAPI(
-    title="GA8ED Capstone Project: Real-time Incident Detection for Neighbourhood Safety"
+    title="GA8ED Video Detection API",
+    description="API for retrieving video metadata and detection results",
+    version=API_VERSION,
+    docs_url=f"{API_PREFIX}/docs",
+    redoc_url=f"{API_PREFIX}/redoc",
+    openapi_url=f"{API_PREFIX}/openapi.json",
+)
+
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, replace with specific origins
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
-@app.get("/videos", response_model=List[VideoResponse])
+@app.get(f"{API_PREFIX}/videos", response_model=List[VideoResponse])
 async def list_videos(
-    limit: int = Query(10, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-    has_alert: Optional[bool] = None,
+    limit: int = Query(
+        10, ge=1, le=100, description="Number of records to return (1-100)"
+    ),
+    offset: int = Query(0, ge=0, description="Number of records to skip"),
+    has_alert: Optional[bool] = Query(
+        None, description="Filter videos that have either bear or vandalism alerts"
+    ),
 ):
+    """
+    List videos with optional filtering and pagination.
+
+    - **limit**: Number of records to return (1-100)
+    - **offset**: Number of records to skip
+    - **has_alert**: Filter videos that have either bear or vandalism alerts
+    """
     try:
         log_info(
             f"Listing videos with params: limit={limit}, offset={offset}, has_alert={has_alert}"
@@ -67,8 +97,15 @@ async def list_videos(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/videos/{video_id}", response_model=VideoResponse)
-async def get_video(video_id: str):
+@app.get(f"{API_PREFIX}/videos/{{video_id}}", response_model=VideoResponse)
+async def get_video(
+    video_id: str = Query(..., description="Unique identifier of the video")
+):
+    """
+    Get detailed information about a specific video.
+
+    - **video_id**: Unique identifier of the video
+    """
     try:
         log_info(f"Getting video with ID: {video_id}")
 
