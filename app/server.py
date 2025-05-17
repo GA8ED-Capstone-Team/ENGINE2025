@@ -4,6 +4,7 @@ from typing import Optional, List
 from models import VideoResponse
 from utils import execute_query, DB_SCHEMA, DB_TABLE
 from logger import log_info, log_error, log_debug, log_warning
+from datetime import datetime
 
 # API version
 API_VERSION = "v1"
@@ -26,6 +27,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get(f"{API_PREFIX}/ping")
+async def ping():
+    """
+    Health check endpoint to verify API is running.
+    Returns a simple pong response with timestamp.
+    """
+    log_info("Ping received")
+    return {"status": "ok", "message": "pong", "timestamp": datetime.now().isoformat()}
 
 
 @app.get(f"{API_PREFIX}/videos", response_model=List[VideoResponse])
