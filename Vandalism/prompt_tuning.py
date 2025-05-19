@@ -10,7 +10,7 @@ import google.generativeai as genai
 
 #  Cell 2: Configuration
 VIDEO_PATH = "/home/realtimeidns/Downloads/CarVandalism21.mov"
-GEMINI_API_KEY = os.getenv("AIzaSyCFpn8rpN8yZtLn9UMUCI168eKNPLXiMOM") or "AIzaSyCFpn8rpN8yZtLn9UMUCI168eKNPLXiMOM"
+GEMINI_API_KEY = os.getenv("key") or "keyM"
 
 # Set up Gemini
 genai.configure(api_key=GEMINI_API_KEY)
