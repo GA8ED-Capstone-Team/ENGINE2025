@@ -32,7 +32,7 @@ prompt = [
     """
 You are an AI video analyst detecting vandalism.
 
-Please watch the **entire video carefully before giving your final answer.
+Please watch the entire video carefully before giving your final answer.
 
 Classify any of the following as car vandalism:
 - Kicking, scratching, hitting, or jumping on a car
