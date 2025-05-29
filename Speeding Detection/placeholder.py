@@ -7,6 +7,7 @@ from collections import defaultdict
 import matplotlib.pyplot as plt
 from sklearn.cluster import MeanShift
 from scipy.spatial.distance import cdist
+import cv2
 
 
 def compute_pose_3d(image_points, object_points, camera_matrix, dist_coeffs):
