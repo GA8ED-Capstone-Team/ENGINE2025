@@ -1,364 +1,432 @@
 import cv2
-import os
-from ultralytics import solutions
 import numpy as np
-import matplotlib.pyplot as plt
-from edge import canny
-from edge import hough_transform
-import filters
-#from torchvision.models.segmentation import deeplabv3_resnet
+from ultralytics import SAM
 from yolo_detector import YoloDetector
 from dpsort_tracker import DeepSortTracker
-import torch
-from transformers import SegformerForSemanticSegmentation, SegformerImageProcessor
+from collections import defaultdict
+import matplotlib.pyplot as plt
+from sklearn.cluster import MeanShift
+from scipy.spatial.distance import cdist
 
 
+def compute_pose_3d(image_points, object_points, camera_matrix, dist_coeffs):
+    success, rvec, tvec = cv2.solvePnP(object_points, image_points, camera_matrix, dist_coeffs,
+                                       flags=cv2.SOLVEPNP_IPPE_SQUARE)
+    if not success:
+        raise RuntimeError("SolvePnP failed")
+    R, _ = cv2.Rodrigues(rvec)
+    print("Rotation Matrix:\n", R)
+    print("Translation Vector:\n", tvec)
+    return R, tvec
 
-#IMG_PATH = r"C:\DataSets\SeattleStreet.png"
-
-DATASET_PATH = "C:\DataSets"
-ROADS_FOLDER = os.path.join(DATASET_PATH, "RoadsCropped")
-
-# Initialize SegFormer-b5 (higher accuracy, larger model)
-model_name = "nvidia/segformer-b5-finetuned-cityscapes-1024-1024"
-model = SegformerForSemanticSegmentation.from_pretrained(model_name)
-processor = SegformerImageProcessor(
-    do_resize=True,
-    do_normalize=True,
-    do_random_crop=False,
-    do_pad=False
-)
-model.eval()  # Disable dropout layers
-
-def filter_short_lines(lines, min_length=50):
-    """ Removes lines that are too short to be meaningful road edges. """
-    filtered_lines = []
-    for slope, intercept in lines:
-        x1, y1 = 0, int(intercept)
-        x2, y2 = 800, int(slope * 800 + intercept)  # Assume width = 800 pixels
-
-        # Compute Euclidean distance of the line
-        length = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-
-        if length > min_length:
-            filtered_lines.append((slope, intercept))
-
-    return filtered_lines
-
-def filter_invalid_slopes(lines, min_slope=0.3, max_slope=3.5):
-    """ Filters out lines that are too steep (|slope| > max) or too flat (|slope| < min). """
-    return [(slope, intercept) for slope, intercept in lines if min_slope < abs(slope) < max_slope]
-
-def merge_lines(lines, max_gap=30, max_angle=5):
-    """Merge similar lines using DBSCAN clustering"""
-    from sklearn.preprocessing import StandardScaler
-    from sklearn.cluster import DBSCAN
-    
-    # Convert lines to angle-distance representation
-    line_params = []
-    for line in lines:
-        x1, y1, x2, y2 = line[0]
-        dx = x2 - x1
-        dy = y2 - y1
-        angle = np.arctan2(dy, dx)  # Range: (-π/2, π/2)
-        length = np.sqrt(dx**2 + dy**2)
-        line_params.append([angle, length])  # Use angle + length features
-    
-    # Normalize features
-    scaler = StandardScaler()
-    scaled_params = scaler.fit_transform(line_params)
-    
-    # Cluster lines with single eps value
-    db = DBSCAN(eps=0.5, min_samples=1).fit(scaled_params)  # Tune eps between 0.3-1.0
-    
-    # Merge clusters
-    merged = []
-    for label in set(db.labels_):
-        if label == -1: continue
-        cluster = np.array(lines)[np.where(db.labels_ == label)]
-        x_points = np.concatenate(cluster[:,:,[0,2]])
-        y_points = np.concatenate(cluster[:,:,[1,3]])
-        merged.append([
-            int(x_points.min()), int(y_points.min()),
-            int(x_points.max()), int(y_points.max())
-        ])
-    
-    return merged
-
-def get_driveway_mask(img):
+def order_corners_clockwise(corners):
     """
-    Lets users draw polygons around driveways using mouse clicks.
-    Returns a binary mask where driveways are marked (255 = driveway).
+    Returns the corners ordered as:
+    bottom-left, top-left, top-right, bottom-right
     """
-    driveway_mask = np.zeros_like(img[:, :, 0])
-    polygons = []
-    current_poly = []
+    corners = np.array(corners, dtype=np.float32)
+    center = np.mean(corners, axis=0)
 
-    def mouse_callback(event, x, y, flags, param):
-        nonlocal current_poly
-        if event == cv2.EVENT_LBUTTONDOWN:
-            current_poly.append((x, y))
-            # Draw the point
-            cv2.circle(clone, (x, y), 5, (0, 0, 255), -1)
-            cv2.imshow("Mark Driveways", clone)
-            
-        elif event == cv2.EVENT_RBUTTONDOWN and current_poly:
-            # Close the polygon
-            current_poly.append(current_poly[0])
-            polygons.append(np.array(current_poly, dtype=np.int32))
-            # Draw the polygon
-            cv2.polylines(clone, [np.array(current_poly)], True, (0, 255, 0), 2)
-            cv2.imshow("Mark Driveways", clone)
-            current_poly = []
+    def angle(pt):
+        return np.arctan2(pt[1] - center[1], pt[0] - center[0])
 
-    clone = img.copy()
-    cv2.namedWindow("Mark Driveways")
-    cv2.setMouseCallback("Mark Driveways", mouse_callback)
+    sorted_corners = sorted(corners, key=angle)
 
-    while True:
-        cv2.imshow("Mark Driveways", clone)
-        key = cv2.waitKey(1) & 0xFF
-        
-        # Press 'c' to close current polygon
-        if key == ord('c') and len(current_poly) > 2:
-            current_poly.append(current_poly[0])
-            polygons.append(np.array(current_poly, dtype=np.int32))
-            cv2.polylines(clone, [np.array(current_poly)], True, (0, 255, 0), 2)
-            current_poly = []
-            
-        # Press 'q' to finish
-        elif key == ord('q'):
-            break
+    # Rearrange based on geometric assumptions
+    # Assume vehicle is pointing up, sort accordingly
+    top_two = sorted(sorted_corners[:2], key=lambda p: p[0])  # sort left-right
+    bottom_two = sorted(sorted_corners[2:], key=lambda p: p[0])
 
-    cv2.destroyAllWindows()
+    return np.array([bottom_two[0], top_two[0], top_two[1], bottom_two[1]], dtype=np.float32)
+
+def get_vehicle_base_contour(mask, bbox, max_iters=20, debug=False):
+    """
+    Estimate vehicle base rectangle from mask using K-means-like bottom contour clustering.
+
+    Args:
+        mask (np.ndarray): Binary mask (H x W), dtype bool or uint8.
+        bbox (tuple): (x1, y1, x2, y2) bounding box in global image coordinates.
+        max_iters (int): Max iterations for clustering.
+        debug (bool): If True, prints debug info and shows intermediate results.
+
+    Returns:
+        List of 4 points (x, y) in global image coordinates, or None if failed.
+    """
+    x1, y1, x2, y2 = map(int, bbox)
+    h_img, w_img = mask.shape[:2]
+    w = x2 - x1
+    h = y2 - y1
+    pad_w = int(0.025 * w)
+    pad_h = int(0.025 * h)
+    # Expand bbox by 5% on all sides, but keep within image bounds
+    x1e = max(0, x1 - pad_w)
+    y1e = max(0, y1 - pad_h)
+    x2e = min(w_img, x2 + pad_w)
+    y2e = min(h_img, y2 + pad_h)
+
+    # Use expanded bbox for cropping
+    mask_crop = mask[y1e:y2e, x1e:x2e].astype(np.uint8)
+    if mask_crop.size == 0 or mask_crop.shape[0] < 2 or mask_crop.shape[1] < 2:
+        if debug:
+            print("Empty or invalid mask crop.")
+        return None
     
-    # Create mask from polygons
-    for poly in polygons:
-        cv2.fillPoly(driveway_mask, [poly], 255)
-        
-    return driveway_mask
+    mask_uint8 = mask_crop.astype(np.uint8) * 255
+    grad_y = cv2.Sobel(mask_uint8, cv2.CV_64F, 0, 1, ksize=3)
+    bottom_edge = np.argwhere(grad_y < 0)
+    if debug:
+        print(f"Bottom edge points: {len(bottom_edge)}")
+    if len(bottom_edge) < 4:
+        return None
 
-# Function to draw detected lines
-def draw_lines(color_img, empty_img,line, color):
-    slope, intercept = line[0], line[1]
-    x1, y1 = 0, int(intercept)
-    x2, y2 = color_img.shape[1], int(slope * color_img.shape[1] + intercept)
-    cv2.line(color_img, (x1, y1), (x2, y2), color, 3)
-    cv2.line(empty_img, (x1, y1), (x2, y2), color, 3)
+    # MeanShift clustering
+    try:
+        points = np.flip(bottom_edge, axis=1)  # (x, y)
+        ms = MeanShift(bandwidth=20, bin_seeding=True)
+        ms.fit(points)
+        labels = ms.labels_
+        cluster_centers = ms.cluster_centers_
+    except Exception as e:
+        if debug:
+            print(f"MeanShift error: {e}")
+        return None
 
-def find_outermost_lines(lines):
-    """Takes in a bunch of lines in the format (m,b) and finds the 
-    two outermost lines in the image"""
-
-    min_line = None
-    max_line = None
-    min_x = float('inf')
-    max_x = float('-inf')
-
-    for line in lines:
-        m, b = line
-        x = -b / m # Calculate x-intercept: x = -b / m
-
-        # Update leftmost line
-        if x < min_x:
-            min_x = x
-            min_line = line
-
-        # Update rightmost line
-        if x > max_x:
-            max_x = x
-            max_line = line
-
-    return min_line, max_line
-
-
-def findCarEdges(img, kernelSize=3, Sigma=5.0, High=0.6, Low=0.4, numLines=6):
-    """
-    Detects road edges using Canny edge detection and Hough Transform.
-    Displays exactly 6 detected straight lines on the image.
-    """
-    # Apply Canny edge detection
-    edges = canny(img, kernel_size=kernelSize, sigma=Sigma, high=High, low=Low)
-
-    # Perform Hough Transform
-    acc, rhos, thetas = hough_transform(edges)
-
-    # Store detected lines
-    detected_lines = []
-
-    # Extract 6 strongest peaks from the Hough accumulator
-    num_lines = numLines
-    peak_threshold = 0.5 * np.max(acc)  # Relative threshold for strong peaks (filters out irrelevent lines)
-
-    # for _ in range(num_lines):
-    while (len(detected_lines) < num_lines): 
-        idx = np.argmax(acc)  # Find peak index (idx is flattened - needs to be converted back to (row,colomn))
-        r_idx, t_idx = divmod(idx, acc.shape[1])  # Convert to 2D indices
-        if acc[r_idx, t_idx] < peak_threshold: 
-            break  # Stop if remaining peaks are too weak
-
-        rho = rhos[r_idx]
-        theta = thetas[t_idx]
-        
-        acc[r_idx, t_idx] = 0  # Suppress this peak to avoid duplicate detection
-        acc[max(r_idx-5, 0):r_idx+5, max(t_idx-5, 0):t_idx+5] = 0  # Suppress nearby peaks to avoid crowding one region
-
-
-        # Convert Hough parameters to Cartesian line representation
-        if np.sin(theta) != 0:  # Avoid division by zero
-            slope = - (np.cos(theta) / np.sin(theta))  # Line slope
-            intercept = (rho / np.sin(theta))  # y-intercept
-            detected_lines.append((slope, intercept))
+    threshold = 0.5 * h
+    # --- Only filter clusters if there are more than 2 clusters ---
+    if len(cluster_centers) > 2:
+        dists = cdist(cluster_centers, cluster_centers)
+        np.fill_diagonal(dists, np.inf)
+        keep_mask = np.min(dists, axis=1) < threshold
+        cluster_centers = cluster_centers[keep_mask]
+        keep_labels = [i for i, keep in enumerate(keep_mask) if keep]
+        mask_keep = np.isin(labels, keep_labels)
+        points = points[mask_keep]
+        labels = labels[mask_keep]
+        unique_labels = {old: new for new, old in enumerate(sorted(set(labels)))}
+        labels = np.array([unique_labels[l] for l in labels])
+    else:
+        keep_mask = np.ones(len(cluster_centers), dtype=bool)
     
-    # Convert grayscale image back to color
-    color_img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+    if debug:
+        print(len(cluster_centers), "clusters found")
 
-    # Function to draw detected lines
-    def draw_lines(line, color):
-        slope, intercept = line[0], line[1]
-        x1, y1 = 0, int(intercept)
-        x2, y2 = img.shape[1], int(slope * img.shape[1] + intercept)
-        cv2.line(color_img, (x1, y1), (x2, y2), color, 3)
+    # Filter outliers within each cluster
+    filtered_points = []
+    filtered_labels = []
+    for cluster_id in np.unique(labels):
+        cluster_points = points[labels == cluster_id]
+        if len(cluster_points) < 3:
+            filtered_points.append(cluster_points)
+            filtered_labels.extend([cluster_id] * len(cluster_points))
+            continue
+        centroid = np.mean(cluster_points, axis=0)
+        dists = np.linalg.norm(cluster_points - centroid, axis=1)
+        std = np.std(dists)
+        keep = dists < (np.mean(dists) + 1.5 * std)
+        filtered_points.append(cluster_points[keep])
+        filtered_labels.extend([cluster_id] * np.sum(keep))
+    if len(filtered_points) == 0:
+        if debug:
+            print("No filtered points after outlier removal.")
+        return None
+    filtered_points = np.vstack(filtered_points)
+    filtered_labels = np.array(filtered_labels)
 
-    # Draw detected lines in 6 different colors
-    colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), 
-              (255, 255, 0), (255, 0, 255), (0, 255, 255)]  # 6 distinct colors
-
-    for i, line in enumerate(detected_lines):
-        draw_lines(line, colors[i % len(colors)])  
-
-    color_img = cv2.cvtColor(color_img, cv2.COLOR_BGR2RGB)
-    edges = (edges * 255).astype("uint8")
-
-    return detected_lines, color_img, edges  # Return color_img and edges for debugging
-
-def CalculateHomography(img, roi_points):
-    """
-    Calculates the homography matrix for BEV transformation based on user-defined points.
-    User will click 4 points in this order: top-left, top-right, bottom-right, bottom-left
-    """
-    # Get image dimensions
-    h, w = img.shape[:2]
+    # Enhanced Step 2: Initialize two lines using diagonals of the crop
+    h, w = mask_crop.shape
     
-    # Define destination points (BEV rectangle)
-    side_margin = int(w * 0.1)  # 10% margin
-    bev_width = w - 2*side_margin
-    bev_height = int(bev_width * 0.6)  # Aspect ratio 1:0.6
+    # Use V-shape initialization:
+    mid_bottom = ((w-1)//2, h-1)
+    left_top = (int(w*0.25), int(h*0.6))
+    right_top = (int(w*0.75), int(h*0.6))
+
+    line_left = np.polyfit([mid_bottom[0], left_top[0]], [mid_bottom[1], left_top[1]], 1)
+    line_right = np.polyfit([mid_bottom[0], right_top[0]], [mid_bottom[1], right_top[1]], 1)
+    lines = [line_left, line_right]
+
+    for _ in range(max_iters):
+        clusters = [[] for _ in range(2)]
+        for pt in filtered_points:
+            dists = [np.abs(l[0]*pt[0] - pt[1] + l[1]) / np.sqrt(l[0]**2 + 1) for l in lines]
+            min_idx = np.argmin(dists)
+            clusters[min_idx].append(pt)
+        new_lines = []
+        for pts in clusters:
+            if len(pts) < 2:
+                if debug:
+                    print("Cluster too small:", [len(c) for c in clusters])
+                return None
+            pts = np.array(pts)
+            try:
+                line = np.polyfit(pts[:, 0], pts[:, 1], 1)
+            except Exception as e:
+                if debug:
+                    print(f"Polyfit error: {e}")
+                return None
+            new_lines.append(line)
+        lines = new_lines
+
+    def line_intersection(m1, b1, m2, b2):
+        if np.isinf(m1) and np.isinf(m2):
+            return None
+        elif np.isinf(m1):
+            x = b1
+            y = m2 * x + b2
+            return (x, y)
+        elif np.isinf(m2):
+            x = b2
+            y = m1 * x + b1
+            return (x, y)
+        elif m1 == m2:
+            return None
+        else:
+            x = (b2 - b1) / (m1 - m2)
+            y = m1 * x + b1
+            return (x, y)
+
+    def line_eq(p1, p2):
+        x1_, y1_ = p1
+        x2_, y2_ = p2
+        if x2_ != x1_:
+            m_ = (y2_ - y1_) / (x2_ - x1_)
+            b_ = y1_ - m_ * x1_
+        else:
+            m_ = np.inf
+            b_ = x1_
+        return m_, b_
+
+    # Ensure m1 is the width line and m2 is the length line
+    if abs(lines[0][0]) <= abs(lines[1][0]):
+        m1, b1 = lines[0]
+        m2, b2 = lines[1]
+    else:
+        m1, b1 = lines[1]
+        m2, b2 = lines[0]
+    bl_pt = line_intersection(m1, b1, m2, b2)
+
+    m5, b5 = line_eq((x2-x1, 0), (x2-x1, y2-y1))  # height line - right
+    m6, b6 = line_eq((0, 0), (0, y2-y1))         # height line - left
+
+    left_corner = line_intersection(m1, b1, m6, b6)
+    right_corner = line_intersection(m2, b2, m5, b5)
+    if left_corner is not None and right_corner is not None:
+        m3, b3 = m1, right_corner[1] - m1 * right_corner[0]
+        m4, b4 = m2, left_corner[1] - m2 * left_corner[0]
+        inferred_pt = line_intersection(m3, b3, m4, b4)
+    else:
+        inferred_pt = None
+
+    # Map all corners to int and check validity
+    if all(pt is not None and np.all(np.isfinite(pt)) for pt in [bl_pt, left_corner, right_corner, inferred_pt]):
+        bl_pt = tuple(map(int, bl_pt))
+        left_corner = tuple(map(int, left_corner))
+        right_corner = tuple(map(int, right_corner))
+        inferred_pt = tuple(map(int, inferred_pt))
+        corners_crop = [bl_pt, left_corner, inferred_pt, right_corner]
+    else:
+        if debug:
+            print("Could not infer 4th corner or some corners are invalid.")
+        return None
+
+    # Convert to global coordinates
+    corners_global = [(pt[0] + x1, pt[1] + y1) for pt in corners_crop]
+
+    # Ensure clockwise order: top-right, bottom-right, bottom-left, top-left
+    corners_global = order_corners_clockwise(corners_global)
+
+    # --- REJECTION CRITERIA ---
+
+    # Check area (not too small or too large)
+    def polygon_area(pts):
+        pts = np.array(pts)
+        return 0.5 * np.abs(np.dot(pts[:,0], np.roll(pts[:,1], 1)) - np.dot(pts[:,1], np.roll(pts[:,0], 1)))
+    area = polygon_area(corners_global)
+    bbox_area = (x2-x1) * (y2-y1)
+    if area < 0.05 * bbox_area or area > 1.5 * bbox_area:
+        if debug:
+            print(f"Unreasonable area: {area:.1f}, bbox_area={bbox_area:.1f}")
+        return None
     
-    dst_points = np.float32([
-        [side_margin, 0],           # Top-left
-        [w-side_margin, 0],         # Top-right
-        [w-side_margin, bev_height],# Bottom-right
-        [side_margin, bev_height]   # Bottom-left
-    ])
+    # Check side lengths (not too small or too large)
+    side_lengths = [np.linalg.norm(np.array(corners_global[i]) - np.array(corners_global[(i+1)%4]))
+                    for i in range(4)]
+    bbox_diag = np.linalg.norm([x2-x1, y2-y1])
+    min_side = min(side_lengths)
+    max_side = max(side_lengths)
+    if min_side < 0.05 * bbox_diag or max_side > 2.0 * bbox_diag:
+        if debug:
+            print(f"Unreasonable side lengths: {side_lengths}, bbox_diag={bbox_diag:.1f}")
+        return None
     
-    # Convert source points to numpy array
-    src_points = np.float32(roi_points)
     
-    # Calculate homography matrix
-    H, _ = cv2.findHomography(src_points, dst_points)
-    return H, dst_points
-
-def BEVTransform(img, H, output_size=None):
-    """
-    Applies the BEV transformation using the calculated homography matrix
-    """
-    if output_size is None:
-        output_size = (img.shape[1], img.shape[0])  # Same size as input
-        
-    return cv2.warpPerspective(img, H, output_size, flags=cv2.INTER_LINEAR)
-
-def findRoadAlignedEdge(img, kernelSize=3, Sigma=5.0, High=0.6, Low=0.4, numLines=2):
-    """
-    Detects road edges using Canny edge detection and Hough Transform.
-    Displays exactly 6 detected straight lines on the image.
-    """
-
-    empty_img = np.zeros_like(cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)) # empty image to draw lines on
-
-    # Apply Canny edge detection
-    edges = canny(img, kernel_size=kernelSize, sigma=Sigma, high=High, low=Low)
-
-    # Perform Hough Transform
-    acc, rhos, thetas = hough_transform(edges)
-
-    # Store detected lines
-    detected_lines = []
-
-    # Extract 6 strongest peaks from the Hough accumulator
-    num_lines = numLines
-    peak_threshold = 0.5 * np.max(acc)  # Relative threshold for strong peaks (filters out irrelevent lines)
-
-    # for _ in range(num_lines):
-    while (len(detected_lines) < num_lines): 
-        idx = np.argmax(acc)  # Find peak index (idx is flattened - needs to be converted back to (row,colomn))
-        r_idx, t_idx = divmod(idx, acc.shape[1])  # Convert to 2D indices
-        if acc[r_idx, t_idx] < peak_threshold: 
-            break  # Stop if remaining peaks are too weak
-
-        rho = rhos[r_idx]
-        theta = thetas[t_idx]
-        
-        acc[r_idx, t_idx] = 0  # Suppress this peak to avoid duplicate detection
-        acc[max(r_idx-100, 0):r_idx+100, max(t_idx-5, 0):t_idx+5] = 0  # Suppress nearby peaks to avoid crowding one region
+    return corners_global
 
 
-        # Convert Hough parameters to Cartesian line representation
-        if np.sin(theta) != 0:  # Avoid division by zero
-            slope = - (np.cos(theta) / np.sin(theta))  # Line slope
-            intercept = (rho / np.sin(theta))  # y-intercept
-            detected_lines.append((slope, intercept))
-    
-    # Convert grayscale image back to color
-    color_img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+def moving_average_filter(speeds, window=5):
+    if not speeds:
+        return None
+    speeds = np.array(speeds[-window:])
+    return np.mean(speeds)
 
-    # Draw detected lines in 6 different colors
-    colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), 
-              (255, 255, 0), (255, 0, 255), (0, 255, 255)]  # 6 distinct colors
+def filter_calibrations(calibs, orientation_thresh=0.7, z_range=(0, 700)):
+    filtered = []
+    for frame_idx, R, t in calibs:
+        z_axis = R[:, 2]
+        if abs(z_axis[1]) > orientation_thresh:
+            continue
+        if not (z_range[0] < t[2] < z_range[1]):
+            continue
+        filtered.append((frame_idx, R, t))
+    return filtered
 
-    for i, line in enumerate(detected_lines):
-        draw_lines(color_img, empty_img, line, colors[i % len(colors)])  
+from sklearn.linear_model import RANSACRegressor
 
-    color_img = cv2.cvtColor(color_img, cv2.COLOR_BGR2RGB)
-    edges = (edges * 255).astype("uint8")
+def ransac_filter_translations(calibs, min_samples=2, residual_threshold=1.0):
+    if len(calibs) < min_samples:
+        return []
 
-    return detected_lines, color_img, edges  # Return color_img and edges for debugging
+    frames = np.array([f for f, _, _ in calibs])
+    translations = np.array([t.ravel() for _, _, t in calibs])  # (N, 3)
+
+    # Fit RANSAC model on each axis separately
+    inlier_mask = np.ones(len(calibs), dtype=bool)
+    for axis in [2]:
+        ransac = RANSACRegressor(min_samples=min_samples, residual_threshold=residual_threshold)
+        try:
+            ransac.fit(frames.reshape(-1, 1), translations[:, axis])
+            axis_inliers = ransac.inlier_mask_
+            inlier_mask &= axis_inliers
+        except Exception as e:
+            print(f"RANSAC fitting error on axis {axis}: {e}")
+            return []
+
+    return [calibs[i] for i in range(len(calibs)) if inlier_mask[i]]
 
 
 def main():
-    """
-    Main function to run Canny edge detection on an image and save the result.
-    """
-    img_path = r"C:\DataSets\RoadsCropped\SeattleStreet.png"
+    MODEL_PATH = r"C:\Users\bahaa\YOLO\yolo11x.pt"
+    VIDEO_PATH = r"C:\Users\bahaa\Downloads\Untitled video - Made with Clipchamp (3).mp4"
+    intrinsics_file = r"C:\Users\bahaa\CapstoneProject\ENGINE2025\Speeding Detection\Camera_Calibration\camera_intrinsics.npz"
+    intrinsics_data = np.load(intrinsics_file)
+    intrinsic_matrix = intrinsics_data["mtx"]
+    dist_coeffs = intrinsics_data["dist"]
 
-    img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+    W, L = 1.82, 4.8
+    world_coords = np.array([(0, 0, 0), (0, L, 0), (W, L, 0), (W, 0, 0)], dtype=np.float64)
 
-    #lines, linesCar, edges = findCarEdges(img, kernelSize=3, Sigma=1.0, High=2, Low=1.5, numLines=1)
-    lines, linedImage, edges = findRoadAlignedEdge(img, kernelSize=3, Sigma=1.0, High=2, Low=1.5, numLines=5)
-    print(lines)
-    lines = find_outermost_lines(lines)
-    black_img = np.zeros_like(img)
-    for line in lines:
-        draw_lines(img, black_img, line, (255,0,0))
-    
-    y1, y2 = 0 , img.shape[0]
-    x1,x2 =(y1 - lines[0][1]) / lines[0][0], (y2 - lines[0][1]) / lines[0][0] 
-    x3, x4 = (y1 - lines[1][1]) / lines[1][0], (y2 - lines[1][1]) / lines[1][0]
-    corners = [(y1,x2),(y1,x4), (y2,x3),(y2,x1)]
-    H,_ = CalculateHomography(img, corners)
-    transformed = BEVTransform(img, H)
+    cap = cv2.VideoCapture(VIDEO_PATH)
+    detector = YoloDetector(model_path=MODEL_PATH, confidence=0.7)
+    tracker = DeepSortTracker()
+    sam_model = SAM("sam2.1_s.pt")
+    sam_model.model.to('cuda')
 
-    cv2.imshow("BEV", transformed)    
-    cv2.imshow('outermost edge lines', black_img)
-    cv2.imshow('edges', edges)
-    cv2.imshow('Lines on Road', linedImage)
-    cv2.imwrite('output.PNG', linedImage)
-    cv2.imwrite('output2.PNG', black_img)
-    # cv2.imshow('Lines', linesCar)
-    # cv2.imshow('Edges', edges)
-    cv2.waitKey(0)
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    fps = 30
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    out = cv2.VideoWriter("output_vehicle_detection.mp4", fourcc, fps, (width, height))
+
+    N = 10  # window size
+    B = 1   # min frame gap
+    vehicle_history = defaultdict(list)
+    vehicle_calibrations = defaultdict(list)
+    vehicle_speeds = defaultdict(list)
+    speed_time_series = defaultdict(list)
+
+    frame_idx = 0
+    s, b = 38, 0
+    frame_number = (fps * s)  + b
+    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        detections = detector.detect(frame)
+        tracking_ids, boxes = tracker.track(detections, frame)
+
+        for tracking_id, box in zip(tracking_ids, boxes):
+            x1, y1, x2, y2 = map(int, box)
+            if x1 >= x2 or y1 >= y2:
+                continue
+
+            sam_result = sam_model.predict(frame, bboxes=[x1, y1, x2, y2])
+            if not sam_result or not sam_result[0].masks:
+                continue
+            mask = sam_result[0].masks.data[0].cpu().numpy().astype(bool)
+            corners = get_vehicle_base_contour(mask, (x1, y1, x2, y2), max_iters=20, debug=False)
+            if corners is None or len(corners) != 4:
+                continue
+            
+            # Visualize rectangle corners and edges
+            for i, pt in enumerate(corners):
+                cv2.circle(frame, (int(pt[0]), int(pt[1])), 7, (0, 255, 255), -1)
+                cv2.putText(frame, f"V{i+1}", (int(pt[0])+5, int(pt[1])-5), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,255), 2)
+            for i in range(4):
+                pt1 = tuple(map(int, corners[i]))
+                pt2 = tuple(map(int, corners[(i+1)%4]))
+                cv2.line(frame, pt1, pt2, (255, 0, 255), 2)
+            
+            vehicle_history[tracking_id].append((frame_idx, corners))
+            try:
+                R, t = compute_pose_3d(np.array(corners, dtype=np.float64), world_coords, intrinsic_matrix, dist_coeffs)
+                vehicle_calibrations[tracking_id].append((frame_idx, R, t))
+            except:
+                continue
+
+            # filtered = filter_calibrations(vehicle_calibrations[tracking_id][-N:])
+            filtered = ransac_filter_translations(vehicle_calibrations[tracking_id][-N:])
+            # filtered = vehicle_calibrations[tracking_id][-N:]
+            for i in range(len(filtered)):
+                for j in range(i + 1, len(filtered)):
+                    f1, _, t1 = filtered[i]
+                    f2, _, t2 = filtered[j]
+                    if f2 - f1 >= B:
+                        displacement = np.linalg.norm(t2 - t1)
+                        time_elapsed = (f2 - f1) / fps
+                        speed_mph = (displacement / time_elapsed) * 3.6 / 1.60934
+                        if 0 < speed_mph < 200:
+                            vehicle_speeds[tracking_id].append(speed_mph)
+                            speed_time_series[tracking_id].append((frame_idx, speed_mph))
+                        break
+
+            if vehicle_speeds[tracking_id]:
+                filtered_speed = moving_average_filter(vehicle_speeds[tracking_id], window=1)
+                if filtered_speed:
+                    cv2.putText(
+                        frame, f"Speed: {filtered_speed:.1f} mph", (x1, y2 + 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 200, 0), 2)
+
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
+            cv2.putText(frame, f"ID: {tracking_id}", (x1, y1 - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+
+        out.write(frame)
+        cv2.imshow("Vehicle Detection + Speed", frame)
+        frame_idx += 1
+        if cv2.waitKey(1) & 0xFF in [ord("q"), 27]:
+            break
+
+    cap.release()
+    out.release()
     cv2.destroyAllWindows()
 
+    plt.figure(figsize=(12, 6))
+    for tracking_id, series in speed_time_series.items():
+        if len(series) < 2:
+            continue
+        series = sorted(series)
+        frames, speeds = zip(*series)
+        plt.plot(frames, speeds, label=f"ID {tracking_id}")
+
+    plt.title("Vehicle Speed vs Time (Frame Index)")
+    plt.xlabel("Frame Index")
+    plt.ylabel("Speed (mph)")
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig("vehicle_speed_curves.png")
+    plt.show()
 
 if __name__ == "__main__":
     main()
