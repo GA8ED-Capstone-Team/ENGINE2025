@@ -581,7 +581,7 @@ def process_tracks(tracked_predictions_path, camera_intrinsics_path, video_s3_ur
 def main():
     # Get input paths from environment variables
     tracked_predictions_path = os.environ.get("TRACKED_PREDICTIONS_PATH")
-    camera_intrinsics_path = os.environ.get("CAMERA_INTRINSICS_PATH")
+    camera_intrinsics_path = "/app/camera_intrinsics.npz"  # Built-in path
     video_s3_uri = os.environ.get("VIDEO_S3_URI")
     output_path = os.environ.get("OUTPUT_PATH", "speeds.json")
     speed_alert_threshold = float(
@@ -589,7 +589,7 @@ def main():
     )  # Default 30 mph
     s3_output_prefix = os.environ.get("S3_OUTPUT_PREFIX", "speed_results")
 
-    if not all([tracked_predictions_path, camera_intrinsics_path, video_s3_uri]):
+    if not all([tracked_predictions_path, video_s3_uri]):
         raise ValueError("Required environment variables not set")
 
     # Process tracks and get speeds

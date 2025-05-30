@@ -4,16 +4,18 @@ WORKDIR /app
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
-    libgl1-mesa-glx \
-    libglib2.0-0 \
+    gcc \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the source code
+# Copy camera intrinsics file
+COPY camera_intrinsics.npz /app/camera_intrinsics.npz
+
+# Copy the rest of the application
 COPY . .
 
-# Set the entrypoint
-ENTRYPOINT ["python", "speed_detection.py"] 
+# Command to run the application
+CMD ["python", "speed_detection.py"] 
