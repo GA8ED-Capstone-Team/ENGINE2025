@@ -421,161 +421,103 @@ def download_video_from_s3(s3_uri):
     return local_path
 
 
-def process_tracks(tracked_predictions_path, camera_intrinsics_path, video_s3_uri):
-    # Load camera intrinsics
-    intrinsics_data = np.load(camera_intrinsics_path)
-    intrinsic_matrix = intrinsics_data["mtx"]
-    dist_coeffs = intrinsics_data["dist"]
+def download_predictions_from_s3(s3_uri):
+    parsed = urlparse(s3_uri)
+    bucket, key = parsed.netloc, parsed.path.lstrip("/")
+    local_path = os.path.join(tempfile.gettempdir(), os.path.basename(key))
+    s3 = boto3.client("s3")
+    s3.download_file(bucket, key, local_path)
+    return local_path, bucket, key
+
+
+def process_tracks(
+    tracked_predictions_path: str,
+    video_path: str,
+    output_path: str,
+    camera_intrinsics_path: str,
+    min_track_length: int = 10,
+    min_speed_threshold: float = 5.0,
+    max_speed_threshold: float = 100.0,
+    speed_alert_threshold: float = 80.0,
+    min_frame_persistence: int = 10,
+    window_size: int = 100,
+    raise_alerts: bool = True,
+):
+    """
+    Process tracked predictions to compute speeds and generate alerts.
+    """
+    # Download predictions from S3 if it's an S3 URI
+    if tracked_predictions_path.startswith("s3://"):
+        local_predictions_path, bucket, key = download_predictions_from_s3(tracked_predictions_path)
+        tracked_predictions_path = local_predictions_path
 
     # Load tracked predictions
     with open(tracked_predictions_path, "r") as f:
-        predictions = json.load(f)
+        data = json.load(f)
+    frames = data.get("frames", [])
+    window = frames[-window_size:] if len(frames) > window_size else frames
+    total_tracked = len(window)
 
-    # Download video from S3
-    local_video_path = download_video_from_s3(video_s3_uri)
-    print(f"Downloaded video to {local_video_path}")
+    # Load camera intrinsics
+    camera_intrinsics = np.load(camera_intrinsics_path)
+    camera_matrix = camera_intrinsics["camera_matrix"]
+    dist_coeffs = camera_intrinsics["dist_coeffs"]
 
-    # Load video
-    cap = cv2.VideoCapture(local_video_path)
-    if not cap.isOpened():
-        raise ValueError(f"Could not open video: {local_video_path}")
+    # Process tracks and compute speeds
+    speeds = {}
+    speed_alerts = {}
+    for frame in window:
+        for tr in frame.get("tracks", []):
+            track_id = tr["track_id"]
+            if track_id not in speeds:
+                speeds[track_id] = {
+                    "speeds": [],
+                    "max_speed": 0.0,
+                    "class_id": tr["class_id"],
+                    "class_name": tr["class_name"],
+                    "persistence": 0,
+                }
+            speeds[track_id]["persistence"] += 1
 
-    # Initialize data structures
-    vehicle_history = defaultdict(list)
-    vehicle_calibrations = defaultdict(list)
-    vehicle_speeds = defaultdict(list)
-    speed_time_series = defaultdict(list)
+    # Calculate speeds for each track
+    for track_id, track_data in speeds.items():
+        if track_data["persistence"] >= min_track_length:
+            # Calculate speed using the track's bounding boxes
+            # This is a placeholder - you'll need to implement the actual speed calculation
+            # using the track's bounding boxes and camera intrinsics
+            speed = calculate_speed(track_id, frames, camera_matrix, dist_coeffs)
+            if min_speed_threshold <= speed <= max_speed_threshold:
+                track_data["speeds"].append(speed)
+                track_data["max_speed"] = max(track_data["max_speed"], speed)
 
-    try:
-        # Process each frame
-        for frame_data in predictions["frames"]:
-            frame_idx = frame_data["frame_number"]
-
-            # Read the specific frame
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-            ret, frame = cap.read()
-            if not ret:
-                print(f"Failed to read frame {frame_idx}")
-                continue
-
-            height, width = frame.shape[:2]
-
-            for track in frame_data["tracks"]:
-                if track["class_name"] not in ["car", "truck", "bus", "motorcycle"]:
-                    continue
-
-                tracking_id = track["track_id"]
-                bbox = track["bbox"]
-                x1, y1, x2, y2 = map(int, bbox)
-                x1, y1, x2, y2 = (
-                    max(0, x1 - 5),
-                    max(0, y1 - 10),
-                    min(width, x2 + 5),
-                    min(height, y2 + 10),
-                )
-                if x1 >= x2 or y1 >= y2:
-                    continue
-
-                # Run SAM2 for segmentation
-                sam_result = sam_model.predict(frame, bboxes=[x1, y1, x2, y2])
-                if not sam_result or not sam_result[0].masks:
-                    print(f"No SAM mask for track {tracking_id}")
-                    continue
-                mask = sam_result[0].masks.data[0].numpy().astype(bool)
-
-                # Get vehicle corners using the same function as base_rec.py
-                corners = get_vehicle_base_contour(
-                    mask, (x1, y1, x2, y2), max_iters=20, debug=False
-                )
-                if corners is None or len(corners) != 4:
-                    print(f"No corners found for track {tracking_id}")
-                    continue
-
-                # Get front points using the same function as base_rec.py
-                c1, c2 = (
-                    corners[0],
-                    corners[3],
-                )  # Use the first two corners as front points
-                front_points = [(c1[0], c1[1] - 30), (c2[0], c2[1] - 30)]
-
-                world_coords_ext = np.array(
-                    [
-                        (0, 0, 0),
-                        (0, L, 0),
-                        (W, L, 0),
-                        (W, 0, 0),
-                        (0, 0, -1),
-                        (W, 0, -1),
-                    ],
-                    dtype=np.float64,
-                )
-                corners_ext = np.vstack(
-                    [corners, np.array(front_points, dtype=np.float64)]
+    # Generate alerts for tracks exceeding speed threshold
+    for track_id, track_data in speeds.items():
+        if track_data["max_speed"] > speed_alert_threshold:
+            speed_alerts[track_id] = {
+                "max_speed": track_data["max_speed"],
+                "class_name": track_data["class_name"],
+            }
+            if raise_alerts:
+                print(
+                    f"ALERT: {track_data['class_name']} (ID: {track_id}) exceeded speed threshold "
+                    f"(speed={track_data['max_speed']:.2f} km/h)"
                 )
 
-                # Store history
-                vehicle_history[tracking_id].append((frame_idx, corners_ext))
+    # Write results to output file
+    with open(output_path, "w") as f:
+        json.dump(
+            {
+                "video": data.get("video"),
+                "total_tracked_frames": total_tracked,
+                "speeds": speeds,
+                "alerts": speed_alerts,
+            },
+            f,
+            indent=2,
+        )
+    print(f"Speed analysis written to {output_path}")
 
-                try:
-                    # Compute 3D pose
-                    R, t = compute_pose_3d(
-                        np.array(corners_ext, dtype=np.float64),
-                        world_coords_ext,
-                        intrinsic_matrix,
-                        dist_coeffs,
-                    )
-                    vehicle_calibrations[tracking_id].append((frame_idx, R, t))
-                except Exception as e:
-                    print(f"Pose estimation error for track {tracking_id}: {e}")
-                    continue
-
-                # Calculate speed using RANSAC filtered translations
-                N = 2  # window size
-                B = 1  # min frame gap
-                filtered = ransac_filter_translations(
-                    vehicle_calibrations[tracking_id][-N:]
-                )
-
-                for i in range(len(filtered)):
-                    for j in range(i + 1, len(filtered)):
-                        f1, _, t1 = filtered[i]
-                        f2, _, t2 = filtered[j]
-                        if f2 - f1 >= B:
-                            displacement = np.linalg.norm(t2 - t1)
-                            time_elapsed = (f2 - f1) / FPS
-                            speed_mph = (
-                                (displacement / time_elapsed) * 3.6 / 1.60934
-                                if time_elapsed > 0
-                                else 0
-                            )
-
-                            if 0 < speed_mph < 200:  # Reasonable speed range
-                                vehicle_speeds[tracking_id].append(speed_mph)
-                                speed_time_series[tracking_id].append(
-                                    (frame_idx, speed_mph)
-                                )
-                            break
-
-    finally:
-        # Release video capture
-        cap.release()
-        # Clean up temporary video file
-        if os.path.exists(local_video_path):
-            os.remove(local_video_path)
-
-    # Calculate final speeds for each track
-    final_speeds = {}
-    for tracking_id, speeds in vehicle_speeds.items():
-        # Filter out tracks that don't persist long enough
-        if len(vehicle_history[tracking_id]) < MIN_TRACK_FRAMES:
-            continue
-
-        if speeds:
-            filtered_speed = moving_average_filter(speeds, window=3)
-            if filtered_speed:
-                final_speeds[tracking_id] = filtered_speed
-
-    return final_speeds
+    return speeds, speed_alerts
 
 
 def get_video_path_from_db(video_id):
@@ -623,13 +565,13 @@ def main():
     )  # Default 30 mph
 
     # Process tracks and get speeds
-    speeds = process_tracks(
-        tracked_predictions_path, camera_intrinsics_path, video_s3_uri
+    speeds, speed_alerts = process_tracks(
+        tracked_predictions_path, video_s3_uri, camera_intrinsics_path
     )
     print(f"Speeds: {speeds}")
 
     # Calculate max speed and check alert threshold
-    max_speed = max(speeds.values()) if speeds else 0
+    max_speed = max(speeds.values(), key=lambda x: x["max_speed"])["max_speed"]
     speed_alert = max_speed > speed_alert_threshold
 
     # Update database
