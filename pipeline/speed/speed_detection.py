@@ -19,7 +19,7 @@ MIN_TRACK_FRAMES = 10  # Minimum number of frames a track must persist
 DB_SECRET_NAME = "ga8ed-db-userpass"
 DB_NAME = "postgres"
 DB_SCHEMA = "ga8ed"
-DB_TABLE = "video_metadata"
+DB_TABLE = "video_metadata_2"
 
 # Initialize SAM model
 sam_model = SAM("sam2.1_s.pt")

@@ -22,7 +22,7 @@ tracker = DeepSort(
 DB_SECRET_NAME = "ga8ed-db-userpass"
 DB_NAME = "postgres"
 DB_SCHEMA = "ga8ed"
-DB_TABLE = "video_metadata"
+DB_TABLE = "video_metadata_2"
 TABLE_SCHEMA = "video_id, video_uri, tracked_predictions_uri, annotated_video_uri, stability_score, bear_alert, max_speed, speed_alert, vandalism_genai_response, vandalism_alert, created_at, updated_at"
 
 # Colors for different object groups (BGR format)

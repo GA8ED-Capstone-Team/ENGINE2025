@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 DB_SECRET_NAME = "ga8ed-db-userpass"
 DB_NAME = "postgres"
 DB_SCHEMA = "ga8ed"
-DB_TABLE = "video_metadata"
+DB_TABLE = "video_metadata_2"
 
 # Animal detection configurations
 WILD_ANIMALS = {
