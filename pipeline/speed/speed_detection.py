@@ -562,6 +562,7 @@ def process_tracks(tracked_predictions_path, camera_intrinsics_path, video_s3_ur
                                 if time_elapsed > 0
                                 else 0
                             )
+                            print(f"Speed: {speed_mph}")
 
                             if 0 < speed_mph < 200:  # Reasonable speed range
                                 vehicle_speeds[tracking_id].append(speed_mph)
