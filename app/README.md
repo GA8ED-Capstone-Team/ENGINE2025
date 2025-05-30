@@ -102,13 +102,15 @@ Once the application is running, you can access:
 The application uses the following database schema:
 
 ```sql
-CREATE TABLE ga8ed.video_metadata (
+CREATE TABLE ga8ed.video_metadata_2 (
     video_id VARCHAR PRIMARY KEY,
     video_uri VARCHAR NOT NULL,
     tracked_predictions_uri VARCHAR NOT NULL,
     annotated_video_uri VARCHAR,
     stability_score FLOAT,
     bear_alert BOOLEAN,
+    max_speed FLOAT,
+    speed_alert BOOLEAN,
     vandalism_genai_response TEXT,
     vandalism_alert BOOLEAN,
     created_at TIMESTAMP,

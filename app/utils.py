@@ -11,7 +11,7 @@ os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
 DB_SECRET_NAME = "ga8ed-db-userpass"
 DB_NAME = "postgres"
 DB_SCHEMA = "ga8ed"
-DB_TABLE = "video_metadata"
+DB_TABLE = "video_metadata_2"
 
 
 def get_db_connection():

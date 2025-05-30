@@ -46,7 +46,7 @@ async def list_videos(
     ),
     offset: int = Query(0, ge=0, description="Number of records to skip"),
     has_alert: Optional[bool] = Query(
-        None, description="Filter videos that have either bear or vandalism alerts"
+        None, description="Filter videos that have either bear, speed, or vandalism alerts"
     ),
 ):
     """
@@ -54,7 +54,7 @@ async def list_videos(
 
     - **limit**: Number of records to return (1-100)
     - **offset**: Number of records to skip
-    - **has_alert**: Filter videos that have either bear or vandalism alerts
+    - **has_alert**: Filter videos that have either bear, speed, or vandalism alerts
     """
     try:
         log_info(
@@ -71,8 +71,8 @@ async def list_videos(
 
         # Add alert filter
         if has_alert is not None:
-            query += " AND (bear_alert = %s OR vandalism_alert = %s)"
-            params.extend([has_alert, has_alert])
+            query += " AND (bear_alert = %s OR speed_alert = %s OR vandalism_alert = %s)"
+            params.extend([has_alert, has_alert, has_alert])
             log_debug(f"Added alert filter: has_alert={has_alert}")
 
         query += f" ORDER BY updated_at desc"
@@ -94,10 +94,12 @@ async def list_videos(
                 annotated_video_uri=row[3],
                 stability_score=row[4],
                 bear_alert=row[5],
-                vandalism_genai_response=row[6],
-                vandalism_alert=row[7],
-                created_at=row[8],
-                updated_at=row[9],
+                max_speed=row[6],
+                speed_alert=row[7],
+                vandalism_genai_response=row[8],
+                vandalism_alert=row[9],
+                created_at=row[10],
+                updated_at=row[11],
             )
             videos.append(video)
 
@@ -141,10 +143,12 @@ async def get_video(
             annotated_video_uri=result[3],
             stability_score=result[4],
             bear_alert=result[5],
-            vandalism_genai_response=result[6],
-            vandalism_alert=result[7],
-            created_at=result[8],
-            updated_at=result[9],
+            max_speed=result[6],
+            speed_alert=result[7],
+            vandalism_genai_response=result[8],
+            vandalism_alert=result[9],
+            created_at=result[10],
+            updated_at=result[11],
         )
         log_info(f"Successfully retrieved video: {video_id}")
         return video

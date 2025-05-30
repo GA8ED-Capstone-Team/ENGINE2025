@@ -10,6 +10,8 @@ class VideoResponse(BaseModel):
     annotated_video_uri: str
     stability_score: Optional[float]
     bear_alert: Optional[bool]
+    max_speed: Optional[float]
+    speed_alert: Optional[bool]
     vandalism_genai_response: Optional[str]
     vandalism_alert: Optional[bool]
     created_at: datetime
