@@ -578,19 +578,49 @@ def process_tracks(tracked_predictions_path, camera_intrinsics_path, video_s3_ur
     return final_speeds
 
 
+def get_video_path_from_db(video_id):
+    secrets = get_db_userpass()
+    conn = psycopg2.connect(
+        dbname=DB_NAME,
+        user=secrets["username"],
+        password=secrets["password"],
+        host=secrets["host"],
+        port=secrets["port"],
+    )
+    cur = conn.cursor()
+
+    cur.execute(
+        f"""
+        SELECT video_uri
+        FROM {DB_SCHEMA}.{DB_TABLE}
+        WHERE video_id = %s
+        """,
+        (video_id,),
+    )
+    result = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if result is None:
+        raise ValueError(f"No video path found for video_id: {video_id}")
+    return result[0]
+
+
 def main():
     # Get input paths from environment variables
     tracked_predictions_path = os.environ.get("TRACKED_PREDICTIONS_PATH")
+    if not tracked_predictions_path:
+        raise ValueError("TRACKED_PREDICTIONS_PATH environment variable not set")
+
+    # Get video ID and video URI from database
+    video_id = get_video_id_from_s3_path(tracked_predictions_path)
+    video_s3_uri = get_video_path_from_db(video_id)
+
+    # Set up paths
     camera_intrinsics_path = "/app/camera_intrinsics.npz"  # Built-in path
-    video_s3_uri = os.environ.get("VIDEO_S3_URI")
-    output_path = os.environ.get("OUTPUT_PATH", "speeds.json")
     speed_alert_threshold = float(
         os.environ.get("SPEED_ALERT_THRESHOLD", "30.0")
     )  # Default 30 mph
-    s3_output_prefix = os.environ.get("S3_OUTPUT_PREFIX", "speed_results")
-
-    if not all([tracked_predictions_path, video_s3_uri]):
-        raise ValueError("Required environment variables not set")
 
     # Process tracks and get speeds
     speeds = process_tracks(
@@ -602,20 +632,14 @@ def main():
     max_speed = max(speeds.values()) if speeds else 0
     speed_alert = max_speed > speed_alert_threshold
 
-    # Get video ID from S3 path
-    video_id = get_video_id_from_s3_path(tracked_predictions_path)
-
     # Update database
     update_video_record(video_id, max_speed, speed_alert)
 
     # Upload speeds to S3
     parsed = urlparse(tracked_predictions_path)
     bucket = parsed.netloc
-    upload_json_to_s3(speeds, bucket, s3_output_prefix)
-
-    # Save results locally
-    with open(output_path, "w") as f:
-        json.dump(speeds, f, indent=2)
+    output_prefix = f"speed_results/{video_id}"
+    upload_json_to_s3(speeds, bucket, output_prefix, filename="speeds.json")
 
 
 if __name__ == "__main__":
