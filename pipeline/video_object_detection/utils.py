@@ -261,7 +261,12 @@ def run_yolo_deepsort(video_path):
                         "class_id": int(cls_id),
                         "class_name": class_name,
                         "confidence": round(conf, 4) if conf is not None else None,
-                        "bbox": [round(x1, 2), round(y1, 2), round(x2, 2), round(y2, 2)],
+                        "bbox": [
+                            round(x1, 2),
+                            round(y1, 2),
+                            round(x2, 2),
+                            round(y2, 2),
+                        ],
                     }
                 )
 

@@ -608,9 +608,9 @@ def get_video_path_from_db(video_id):
 
 def main():
     # Get input paths from environment variables
-    tracked_predictions_path = os.environ.get("TRACKED_PREDICTIONS_PATH")
+    tracked_predictions_path = os.environ.get("TRACKED_PREDICTIONS")
     if not tracked_predictions_path:
-        raise ValueError("TRACKED_PREDICTIONS_PATH environment variable not set")
+        raise ValueError("TRACKED_PREDICTIONS environment variable not set")
 
     # Get video ID and video URI from database
     video_id = get_video_id_from_s3_path(tracked_predictions_path)
