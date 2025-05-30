@@ -22,7 +22,7 @@ DB_SCHEMA = "ga8ed"
 DB_TABLE = "video_metadata_2"
 
 # Initialize SAM model
-sam_model = SAM("mobile_sam.pt")
+sam_model = SAM("sam2.1_s.pt")
 
 
 def order_corners_clockwise(corners):

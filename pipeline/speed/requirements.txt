@@ -3,7 +3,7 @@
 numpy==1.23.5
 torch==2.0.1+cpu
 torchvision==0.15.2+cpu
-ultralytics==8.0.199
+ultralytics==8.3.101
 deep_sort_realtime
 opencv-python-headless
 filterpy
