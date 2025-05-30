@@ -237,8 +237,10 @@ def run_yolo_deepsort(video_path):
         for box in results.boxes:
             cls_id = int(box.cls[0])
             conf = float(box.conf[0])
-            x1, y1, x2, y2 = box.xyxy[0].tolist()
-            detections.append(([x1, y1, x2 - x1, y2 - y1], conf, cls_id))
+            # Only include detections with confidence >= 0.7
+            if conf >= 0.7:
+                x1, y1, x2, y2 = box.xyxy[0].tolist()
+                detections.append(([x1, y1, x2 - x1, y2 - y1], conf, cls_id))
         tracks = tracker.update_tracks(detections, frame=frame)
 
         tracked_objects = []
@@ -247,19 +249,21 @@ def run_yolo_deepsort(video_path):
                 continue
             track_id = track.track_id
             ltrb, cls_id, conf = track.to_ltrb(), track.det_class, track.det_conf
-            class_name = (
-                model.names[cls_id] if cls_id < len(model.names) else str(cls_id)
-            )
-            x1, y1, x2, y2 = ltrb
-            tracked_objects.append(
-                {
-                    "track_id": int(track_id),
-                    "class_id": int(cls_id),
-                    "class_name": class_name,
-                    "confidence": round(conf, 4) if conf is not None else None,
-                    "bbox": [round(x1, 2), round(y1, 2), round(x2, 2), round(y2, 2)],
-                }
-            )
+            # Only include tracks with confidence >= 0.7
+            if conf is not None and conf >= 0.7:
+                class_name = (
+                    model.names[cls_id] if cls_id < len(model.names) else str(cls_id)
+                )
+                x1, y1, x2, y2 = ltrb
+                tracked_objects.append(
+                    {
+                        "track_id": int(track_id),
+                        "class_id": int(cls_id),
+                        "class_name": class_name,
+                        "confidence": round(conf, 4) if conf is not None else None,
+                        "bbox": [round(x1, 2), round(y1, 2), round(x2, 2), round(y2, 2)],
+                    }
+                )
 
         frame_data.append({"frame_number": frame_idx, "tracks": tracked_objects})
         frame_idx += 1
