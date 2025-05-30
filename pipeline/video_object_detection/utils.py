@@ -220,7 +220,7 @@ def run_yolo_deepsort(video_path):
     frame_data = []
 
     fps = cap.get(cv2.CAP_PROP_FPS)
-    skip = max(1, int(fps) // 2)
+    skip = max(1, int(fps) // 2 * 5)
 
     while True:
         ret, frame = cap.read()
